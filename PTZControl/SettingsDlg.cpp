@@ -16,11 +16,6 @@ CSettingsDlg::CSettingsDlg(CWnd* pParent /*=nullptr*/)
 	, m_bLogitechCameraControl(FALSE)
 	, m_iMotorIntervalTimer(0)
 {
-
-}
-
-CSettingsDlg::~CSettingsDlg()
-{
 }
 
 void CSettingsDlg::DoDataExchange(CDataExchange* pDX)
@@ -59,7 +54,7 @@ void CSettingsDlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Text(pDX, IDC_ED_TOOLTIP_3_8, m_strTooltip[2][7]);
 
 	if (pDX->m_bSaveAndValidate)
-		m_iMotorIntervalTimer = min(max(10,m_iMotorIntervalTimer),1000);
+		m_iMotorIntervalTimer = std::min(std::max(10,m_iMotorIntervalTimer),1000);
 }
 
 
@@ -84,5 +79,5 @@ BOOL CSettingsDlg::OnInitDialog()
 	OnChLogitechcontrol();
 
 	CenterWindow();
-	return TRUE;  				  
+	return TRUE;
 }

@@ -183,8 +183,8 @@
     </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="ExtensionUnit.h" />
-    <ClInclude Include="ExtensionUnitDefines.h" />
+    <ClInclude Include="WebcamControl.h" />
+    <ClInclude Include="LogitechTypes.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="PTZControl.h" />
@@ -194,7 +194,7 @@
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="ExtensionUnit.cpp" />
+    <ClCompile Include="WebcamControl.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
@@ -214,9 +214,6 @@
   <ItemGroup>
     <Image Include="res\CameraControl.bmp" />
     <Image Include="res\PTZControl.ico" />
-  </ItemGroup>
-  <ItemGroup>
-    <Text Include="Readme.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

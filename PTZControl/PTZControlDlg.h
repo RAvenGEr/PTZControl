@@ -3,8 +3,11 @@
 //
 
 #pragma once
+
+#include <stddef.h>
+
 #include "resource.h"
-#include "ExtensionUnit.h"
+#include "WebcamControl.h"
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // CPTZButton
@@ -33,22 +36,10 @@ public:
 		return m_clrFace;
 	}
 
-	void SetTooltip(LPCTSTR lpszToolTipText)
-	{
-		// We keep an internal copy of the tooltip
-		m_strTooltip = lpszToolTipText;
-		__super::SetTooltip(lpszToolTipText);
-	}
-	CString GetTooltip()
-	{
-		return m_strTooltip;
-	}
-
 protected:
 // Data
 	bool	m_bAutoRepeat;
 	UINT	m_uiSent;
-	CString m_strTooltip;
 
 protected:
 	void PreSubclassWindow() override;
@@ -73,7 +64,8 @@ public:
 	~CPTZControlDlg();
 // Dialog Data
 	enum { IDD = IDD_PTZCONTROL_DIALOG };
-	static const int NUM_MAX_WEBCAMS = 3;
+
+	static constexpr size_t NUM_MAX_WEBCAMS{ 3 };
 
 protected:
 	CPTZButton m_btZoomIn;
@@ -84,29 +76,28 @@ protected:
 	CPTZButton m_btLeft;
 	CPTZButton m_btRight;
 	CPTZButton m_btMemory;
-	CPTZButton m_btPreset[CWebcamController::NUM_PRESETS];
+	CPTZButton m_btPreset[WebcamController::NUM_PRESETS];
 	CPTZButton m_btExit;
 	CPTZButton m_btSettings;
 	CPTZButton m_btWebCam[NUM_MAX_WEBCAMS];
 
-// The controller
-	CWebcamController	m_aWebCams[NUM_MAX_WEBCAMS];
+	std::vector<WebcamController> m_webCams;
 
 // Map to save the colors of the buttons per Webcam
 	typedef std::map<UINT,COLORREF> TMAP_BTNCOLORS;
-	TMAP_BTNCOLORS	m_aMapBtnColors[NUM_MAX_WEBCAMS];
+	TMAP_BTNCOLORS m_aMapBtnColors[NUM_MAX_WEBCAMS];
 
 // Tooltips per WebCam
-	CString		m_strTooltips[NUM_MAX_WEBCAMS][CWebcamController::NUM_PRESETS];
+	CString m_strTooltips[NUM_MAX_WEBCAMS][WebcamController::NUM_PRESETS];
 
-	HACCEL		m_hAccel;
-	CString		m_strCameraDeviceNames;
-	int			m_iCurrentWebCam;		// zero based index to m_aWebCams
-	int			m_iNumWebCams;
+	HACCEL m_hAccel;
+	CString m_strCameraDeviceNames;
+
+	size_t m_currentCam;
 
 	void ResetAllColors();
-	CWebcamController &GetCurrentWebCam();
-	void SetActiveCam(int iCam);
+	WebcamController &GetCurrentWebCam();
+	void SetActiveCam(size_t cam);
 
 	// Guard thread
 	CEvent	m_evTerminating;
@@ -114,7 +105,7 @@ protected:
 	static UINT AFX_CDECL GuardThread(LPVOID hWnd); // AFX_THREADPROC
 
 // Implementation
-protected:
+
 	HICON m_hIcon;
 
 	// Generated message map functions

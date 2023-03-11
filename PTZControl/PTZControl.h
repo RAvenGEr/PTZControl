@@ -50,21 +50,17 @@ class CPTZControlApp : public CWinApp
 public:
 	CPTZControlApp();
 
-	// Overrides
-public:
 	virtual BOOL InitInstance();
 
-// Implementation
-
-	DECLARE_MESSAGE_MAP()
 	virtual int ExitInstance();
 
-public:
 	// command line flags
 	CString m_strDevName;		// Device name from the command line to search for
 	bool	m_bNoReset;			// No Reset of web cam
 	bool	m_bNoGuard;			// Prevent a guard thread
 	bool	m_bShowDevices;
+
+	DECLARE_MESSAGE_MAP()
 
 private:
 	CPTZControlDlg* m_pDlg;

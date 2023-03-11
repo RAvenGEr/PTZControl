@@ -24,7 +24,6 @@ public:
 		, m_bNoGuard(false)
 		, m_bShowDevices(false)
 	{
-
 	}
 
 	// Overwritten virtual
@@ -104,6 +103,7 @@ CPTZControlApp::CPTZControlApp()
 	: m_bNoReset(false)
 	, m_bNoGuard(false)
 	, m_bShowDevices(false)
+	, m_pDlg(nullptr)
 {
 }
 
@@ -125,7 +125,9 @@ BOOL CPTZControlApp::InitInstance()
 
 	// Taken from Logitech
 	// PTZDemo\ConferenceCamPTZDemoDlg.cpp
-	CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+	HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+	if (!SUCCEEDED(hr))
+		return FALSE;
 
 //-------------Registry-------------------------------------------------
 
@@ -164,6 +166,6 @@ int CPTZControlApp::ExitInstance()
 #if !defined(_AFXDLL) && !defined(_AFX_NO_MFC_CONTROLS_IN_DIALOGS)
 	ControlBarCleanUp();
 #endif
-
+	CoUninitialize();
 	return __super::ExitInstance();
 }
