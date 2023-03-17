@@ -13,32 +13,34 @@
 
 //////////////////////////////////////////////////////////////////////////
 
-#define REG_WINDOW _T("Window")
-#define REG_WINDOW_POSX		_T("X")
-#define REG_WINDOW_POSY		_T("Y")
-#define REG_TOOLTIP			_T("Tooltip%d")
+#define REG_WINDOW		_T("Window")
+#define REG_WINDOW_POSX	_T("X")
+#define REG_WINDOW_POSY	_T("Y")
+#define REG_TOOLTIP		_T("Tooltip%d")
 
 #define REG_DEVICE						_T("Device")
-#define REG_USELOGOTECHMOTIONCONTROL		_T("LogitechMotionControl")
-#define REG_MOTORINTERVALTIMER				_T("MotorIntervalTimer")
-#define REG_DEVICENAME						_T("DeviceName")
+#define REG_USELOGOTECHMOTIONCONTROL	_T("LogitechMotionControl")
+#define REG_MOTORINTERVALTIMER			_T("MotorIntervalTimer")
+#define REG_DEVICENAME					_T("DeviceName")
 
 #define REG_OPTIONS	_T("Options")
-#define REG_NORESET		_T("NoReset")
-#define REG_NOGUARD		_T("NoGuard")
+#define REG_NORESET	_T("NoReset")
+#define REG_NOGUARD	_T("NoGuard")
 
-#define TIMER_FOCUS_CHECK			4711
-#define TIMER_AUTO_REPEAT			4712
-#define TIMER_CLEAR_MEMORY			4713
+#define TIMER_FOCUS_CHECK	4711
+#define TIMER_AUTO_REPEAT	4712
+#define TIMER_CLEAR_MEMORY	4713
+#define TIMER_TILT_STOP		4714
+#define TIMER_PAN_STOP		4715
 
 #define FOCUS_CHECK_DELAY			250		// After 250msec we move the focus away from a button.
 #define AUTO_REPEAT_DELAY			50		// Autorepeat is on the fastest possible delay of 50msec
 #define AUTO_REPEAT_INITIAL_DELAY	500		// after 1/2 second we start autorepeat
 #define CLEAR_MEMORY_DELAY			5000	// After 5 seconds clear the memory
 
-#define COLOR_GREEN				RGB(0,240,0)
-#define COLOR_RED				RGB(240,0,0)
-#define COLOR_ORANGE			RGB(255,140,0)
+#define COLOR_GREEN		RGB(0,240,0)
+#define COLOR_RED		RGB(240,0,0)
+#define COLOR_ORANGE	RGB(255,140,0)
 
 //////////////////////////////////////////////////////////////////////////
 // CPTZControlApp:

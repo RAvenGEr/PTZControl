@@ -20,7 +20,34 @@ struct UsbIdentifier
 {
 	DWORD vid;
 	DWORD pid;
+
+	bool operator==(const UsbIdentifier& rhs) const {
+		return vid == rhs.vid && pid == rhs.pid;
+	}
 };
+
+enum class PanDirection : long {
+	Stop = 0,
+	Left = -1,
+	Right = 1,
+};
+
+enum class TiltDirection : long {
+	Stop = 0,
+	Down = -1,
+	Up = 1,
+};
+
+enum class ZoomDirection : long {
+	Stop = 0,
+	Out = -1,
+	In = 1,
+};
+
+template <typename T>
+constexpr auto to_underlying(T e) {
+	return static_cast<std::underlying_type_t<T>>(e);
+}
 
 /**
 * (see https://msdn.microsoft.com/en-us/library/windows/hardware/ff568656(v=vs.85).aspx).
@@ -36,17 +63,31 @@ public:
 
 	WebcamController() {}
 
-	HRESULT OpenDevice(const CString &devicePath);
-	HRESULT OpenDevice(const UsbIdentifier usbId);
+	HRESULT OpenDevice(const CString& devicePath);
+	HRESULT OpenDevice(UsbIdentifier usbId);
 	void CloseDevice();
-	HRESULT IsPeripheralPropertySetSupported();
+	HRESULT IsPeripheralPropertySetSupported() const;
 
 	int GetCurrentZoom();
-	int Zoom(int direction);
-	void MoveTilt(int yDirection);
-	void MovePan(int xDirection);
-	void Tilt(int yDirection);
-	void Pan(int xDirection);
+	int Zoom(ZoomDirection zoom);
+
+	/** Start tilt in supplied direction or stop */
+	void Tilt(TiltDirection tilt);
+
+	/** Start pan in supplied direction or stop */
+	void Pan(PanDirection pan);
+	
+	/** Tilt camera step at a time using Logitech control */
+	void LogiMotionTilt(TiltDirection tilt);
+
+	/** Pan camera step at a time using Logitech control */
+	void LogiMotionPan(PanDirection pan);
+
+	/** Digital tilt step at a time */
+	void DigitalTilt(TiltDirection tilt);
+
+	/** Digital pan step at a time */
+	void DigitalPan(PanDirection pan);
 
 	void GotoHome();
 	void SavePreset(int iNum);
@@ -54,6 +95,7 @@ public:
 
 	int motorIntervalTime{ DEFAULT_MOTOR_INTERVAL };
 	bool useLogitechMotionControl{ false };
+	bool invertLogitech{ true };
 
 private:
 	static constexpr DWORD NONODE{ 0xFFFFFF };
@@ -62,7 +104,6 @@ private:
 	HRESULT InitializeXUNodesArray(CComPtr<IKsControl> pKsControl);
 	bool IsExtensionUnitSupported(CComPtr<IKsControl> pKsControl, const GUID& guidExtension, unsigned int nodeId);
 
-	//HRESULT GetProperty(LOGITECH_XU_PROPERTYSET lPropertySet, ULONG ulPropertyId, ULONG ulSize, VOID* pValue);
 	HRESULT SetProperty(LOGITECH_XU_PROPERTYSET lPropertySet, ULONG ulPropertyId, ULONG ulSize, VOID* pValue);
 
 	CComPtr<IKsControl> m_spKsControl{};

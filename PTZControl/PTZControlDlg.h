@@ -16,41 +16,51 @@ class CPTZButton : public CMFCButton
 {
 DECLARE_DYNAMIC(CPTZButton)
 public:
-	CPTZButton();
+	CPTZButton() {}
+
 	void SetCheckStyle()
 	{
 		m_bCheckButton = TRUE;
 		m_bAutoCheck = FALSE;
 	}
 
-	void SetAutoRepeat(bool bVal)
-	{
-		m_bAutoRepeat = bVal;
-	}
-	bool InAutoRepeat()
-	{
-		return m_uiSent!=0;
-	}
 	COLORREF GetFaceColor()
 	{
 		return m_clrFace;
 	}
 
 protected:
-// Data
-	bool	m_bAutoRepeat;
-	UINT	m_uiSent;
-
-protected:
 	void PreSubclassWindow() override;
 	void OnDrawBorder(CDC* pDC, CRect& rectClient, UINT uiState) override;
 	void OnDrawFocusRect(CDC* pDC, const CRect& rectClient) override;
+};
 
+
+class CPTZRepeatingButton : public CPTZButton
+{
+	DECLARE_DYNAMIC(CPTZRepeatingButton)
 public:
+	CPTZRepeatingButton() {}
+
+	bool InAutoRepeat()
+	{
+		return m_uiSent != 0;
+	}
+
+	COLORREF GetFaceColor()
+	{
+		return m_clrFace;
+	}
+
+protected:
 	DECLARE_MESSAGE_MAP()
+
 	afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
 	afx_msg void OnLButtonUp(UINT nFlags, CPoint point);
+
+private:
+	UINT	m_uiSent{ 0 };
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -68,13 +78,13 @@ public:
 	static constexpr size_t NUM_MAX_WEBCAMS{ 3 };
 
 protected:
-	CPTZButton m_btZoomIn;
-	CPTZButton m_btZoomOut;
-	CPTZButton m_btUp;
-	CPTZButton m_btDown;
+	CPTZRepeatingButton m_btZoomIn;
+	CPTZRepeatingButton m_btZoomOut;
+	CPTZRepeatingButton m_btUp;
+	CPTZRepeatingButton m_btDown;
 	CPTZButton m_btHome;
-	CPTZButton m_btLeft;
-	CPTZButton m_btRight;
+	CPTZRepeatingButton m_btLeft;
+	CPTZRepeatingButton m_btRight;
 	CPTZButton m_btMemory;
 	CPTZButton m_btPreset[WebcamController::NUM_PRESETS];
 	CPTZButton m_btExit;
@@ -94,6 +104,8 @@ protected:
 	CString m_strCameraDeviceNames;
 
 	size_t m_currentCam;
+
+	void FindCompatibleCams();
 
 	void ResetAllColors();
 	WebcamController &GetCurrentWebCam();

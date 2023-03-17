@@ -105,12 +105,6 @@ const SLayout g_layout[CPTZControlDlg::NUM_MAX_WEBCAMS+1] =
 
 IMPLEMENT_DYNAMIC(CPTZButton,CMFCButton)
 
-CPTZButton::CPTZButton() 
-	: m_bAutoRepeat(false)
-	, m_uiSent(0)
-{
-}
-
 void CPTZButton::PreSubclassWindow()
 {
 	__super::PreSubclassWindow();
@@ -133,50 +127,40 @@ void CPTZButton::OnDrawFocusRect(CDC* pDC, const CRect& rectClient)
 	UNUSED_ALWAYS(pDC); UNUSED_ALWAYS(rectClient);
 }
 
-void CPTZButton::OnLButtonDown(UINT nFlags, CPoint point)
+IMPLEMENT_DYNAMIC(CPTZRepeatingButton, CMFCButton)
+
+void CPTZRepeatingButton::OnLButtonDown(UINT nFlags, CPoint point)
 {
-	if (m_bAutoRepeat)
-	{
-		SetTimer(TIMER_AUTO_REPEAT, AUTO_REPEAT_INITIAL_DELAY, NULL);
-		m_uiSent = 0;
-	}
+	SetTimer(TIMER_AUTO_REPEAT, AUTO_REPEAT_INITIAL_DELAY, NULL);
+	m_uiSent = 0;
 	__super::OnLButtonDown(nFlags, point);
 }
 
-void CPTZButton::OnLButtonUp(UINT nFlags, CPoint point)
+void CPTZRepeatingButton::OnLButtonUp(UINT nFlags, CPoint point)
 {
-	if (m_bAutoRepeat)
-	{
-		KillTimer(TIMER_AUTO_REPEAT);
+	KillTimer(TIMER_AUTO_REPEAT);
 
-		if (GetCapture() != NULL)
-		{
-			// If we never sent a message we do it once.
-			if (m_uiSent==0 && (GetState() & BST_PUSHED) != 0)
-				GetParent()->SendMessage(WM_COMMAND, MAKELONG(GetDlgCtrlID(), BN_CLICKED), (LPARAM)m_hWnd);
-			else
-				GetParent()->SendMessage(WM_COMMAND, MAKELONG(GetDlgCtrlID(), BN_UNPUSHED), (LPARAM)m_hWnd);
-			// release capture
-			ReleaseCapture();
-		}
+	if (GetCapture() != NULL)
+	{
+		// If we never sent a message we do it once.
+		if (m_uiSent==0 && (GetState() & BST_PUSHED) != 0)
+			GetParent()->SendMessage(WM_COMMAND, MAKELONG(GetDlgCtrlID(), BN_CLICKED), (LPARAM)m_hWnd);
+		else
+			GetParent()->SendMessage(WM_COMMAND, MAKELONG(GetDlgCtrlID(), BN_UNPUSHED), (LPARAM)m_hWnd);
+		// release capture
+		ReleaseCapture();
 	}
-	else
-		// Never call the default in auto repeat
-		__super::OnLButtonUp(nFlags, point);
 }
 
-void CPTZButton::OnTimer(UINT_PTR nIDEvent)
+void CPTZRepeatingButton::OnTimer(UINT_PTR nIDEvent)
 {
 	if (nIDEvent==TIMER_AUTO_REPEAT)
 	{
-		if (m_bAutoRepeat)
-		{
-			if ((GetState() & BST_PUSHED) == 0)
-				return;
-			++m_uiSent;
-			SetTimer(TIMER_AUTO_REPEAT, AUTO_REPEAT_DELAY, NULL);
-			GetParent()->SendMessage(WM_COMMAND, MAKELONG(GetDlgCtrlID(), BN_CLICKED), (LPARAM)m_hWnd);
-		}
+		if ((GetState() & BST_PUSHED) == 0)
+			return;
+		++m_uiSent;
+		SetTimer(TIMER_AUTO_REPEAT, AUTO_REPEAT_DELAY, NULL);
+		GetParent()->SendMessage(WM_COMMAND, MAKELONG(GetDlgCtrlID(), BN_CLICKED), (LPARAM)m_hWnd);
 	}
 
 	__super::OnTimer(nIDEvent);
@@ -306,6 +290,7 @@ BEGIN_MESSAGE_MAP(CPTZControlDlg, CDialogEx)
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
 	ON_WM_CLOSE()
+	ON_WM_DEVICECHANGE()
 	ON_WM_NCHITTEST()
 	ON_BN_CLICKED(IDC_BT_EXIT, &CPTZControlDlg::OnBtExit)
 	ON_WM_SETFOCUS()
@@ -355,6 +340,57 @@ void CPTZControlDlg::ResetAllColors()
 		if (pButton && !bIsWebCamBtn)
 			pButton->SetFaceColor(COLORREF(-1), TRUE);
 	}
+}
+
+void CPTZControlDlg::FindCompatibleCams()
+{
+	std::vector<WebcamController> camsFound;
+	//---------------------------------------------------------------------
+	// INIT AND FIND WEB CAMS
+	// 
+	// Try to find the Device list
+	// Find the devices to search for. We have some default devices if no other is set in 
+	// the registry or on the command line.
+	std::vector<CString> deviceNameFilters;
+	for (const auto* p : g_aCameras)
+		deviceNameFilters.emplace_back(p);
+	CString strCameraNameToSearch = theApp.GetProfileString(REG_DEVICE, REG_DEVICENAME, _T(""));
+	if (!strCameraNameToSearch.IsEmpty())
+		deviceNameFilters.push_back(strCameraNameToSearch);
+	if (!theApp.m_strDevName.IsEmpty())
+		deviceNameFilters.push_back(theApp.m_strDevName);
+
+	auto aDevices{ WebcamController::CompatibleDevices(deviceNameFilters) };
+
+	auto OpenWebCam = [](WebcamController& webCam, CString strDevToken)->bool
+	{
+		HRESULT hr = webCam.OpenDevice(strDevToken);
+		if (FAILED(hr))
+		{
+			AfxMessageBox(IDP_ERR_OPENFAILED);
+			return false;
+		}
+
+		//	Load the default setting
+		webCam.useLogitechMotionControl = theApp.GetProfileInt(REG_DEVICE, REG_USELOGOTECHMOTIONCONTROL, FALSE) != 0;
+		webCam.motorIntervalTime = theApp.GetProfileInt(REG_DEVICE, REG_MOTORINTERVALTIMER, WebcamController::DEFAULT_MOTOR_INTERVAL);
+		return true;
+	};
+
+	for (auto device : aDevices) {
+		camsFound.emplace_back();
+		if (!OpenWebCam(camsFound.back(), device.devicePath)) {
+			camsFound.pop_back();
+		}
+	}
+
+	// Check how many web cams we found
+	if (m_webCams.empty() && camsFound.empty())
+	{
+		// If we have no cam, show message
+		AfxMessageBox(IDP_ERR_NO_CAMERA, MB_ICONERROR);
+	}
+	m_webCams.insert(m_webCams.end(), std::make_move_iterator(camsFound.begin()), std::make_move_iterator(camsFound.end()));
 }
 
 void CPTZControlDlg::ResetMemButton()
@@ -490,64 +526,12 @@ BOOL CPTZControlDlg::OnInitDialog()
 		}
 	}
 
-	// Set auto repeat buttons
-	m_btLeft.SetAutoRepeat(true);
-	m_btRight.SetAutoRepeat(true);
-	m_btDown.SetAutoRepeat(true);
-	m_btUp.SetAutoRepeat(true);
-	m_btZoomIn.SetAutoRepeat(true);
-	m_btZoomOut.SetAutoRepeat(true);
-
 	// This is a check box style
 	m_btMemory.SetCheckStyle();
 	for (auto &btn : m_btWebCam)
 		btn.SetCheckStyle();
 
-	//---------------------------------------------------------------------
-	// INIT AND FIND WEB CAMS
-	// 
-	// Try to find the Device list
-	// Find the devices to search for. We have some default devices if no other is set in 
-	// the registry or on the command line.
-	std::vector<CString> deviceNameFilters;
-	for (const auto* p : g_aCameras)
-		deviceNameFilters.emplace_back(p);
-	CString strCameraNameToSearch = theApp.GetProfileString(REG_DEVICE, REG_DEVICENAME, _T(""));
-	if (!strCameraNameToSearch.IsEmpty())
-		deviceNameFilters.push_back(strCameraNameToSearch);
-	if (!theApp.m_strDevName.IsEmpty())
-		deviceNameFilters.push_back(theApp.m_strDevName);
-
-	auto aDevices{ WebcamController::CompatibleDevices(deviceNameFilters) };
-
-	auto OpenWebCam = [](WebcamController& webCam, CString strDevToken)->bool
-	{
-		HRESULT hr = webCam.OpenDevice(strDevToken);
-		if (FAILED(hr))
-		{
-			AfxMessageBox(IDP_ERR_OPENFAILED);
-			return false;
-		}
-
-		//	Load the default setting
-		webCam.useLogitechMotionControl = theApp.GetProfileInt(REG_DEVICE, REG_USELOGOTECHMOTIONCONTROL, FALSE) != 0;
-		webCam.motorIntervalTime = theApp.GetProfileInt(REG_DEVICE, REG_MOTORINTERVALTIMER, WebcamController::DEFAULT_MOTOR_INTERVAL);
-		return true;
-	};
-
-	for (auto device : aDevices) {
-		m_webCams.emplace_back();
-		if (!OpenWebCam(m_webCams.back(), device.devicePath)) {
-			m_webCams.pop_back();
-		}
-	}
-
-	// Check how many web cams we found
-	if (m_webCams.empty())
-	{
-		// If we have no cam, show message
-		AfxMessageBox(IDP_ERR_NO_CAMERA, MB_ICONERROR);
-	}
+	FindCompatibleCams();
 
 	//---------------------------------------------------------------------
 	// ADJUST THE DIALOG
@@ -725,7 +709,7 @@ void CPTZControlDlg::OnBtMemory()
 		m_btMemory.SetFaceColor(COLORREF(-1),TRUE);
 }
 
-BEGIN_MESSAGE_MAP(CPTZButton, CMFCButton)
+BEGIN_MESSAGE_MAP(CPTZRepeatingButton, CMFCButton)
 	ON_WM_LBUTTONDOWN()
 	ON_WM_TIMER()
 	ON_WM_LBUTTONUP()
@@ -779,53 +763,81 @@ void CPTZControlDlg::OnBtHome()
 void CPTZControlDlg::OnBtZoomIn()
 {
 	ResetAllColors();
-	GetCurrentWebCam().Zoom(1);
+	GetCurrentWebCam().Zoom(ZoomDirection::In);
 }
 
 
 void CPTZControlDlg::OnBtZoomOut()
 {
 	ResetAllColors();
-	GetCurrentWebCam().Zoom(-1);
+	GetCurrentWebCam().Zoom(ZoomDirection::Out);
 }
 
 
 void CPTZControlDlg::OnBtDown()
 {
 	ResetAllColors();
-	if (m_btDown.InAutoRepeat())
-		GetCurrentWebCam().Tilt(-1);
-	else
-		GetCurrentWebCam().MoveTilt(-1);
+	if (m_btDown.InAutoRepeat()) {
+		GetCurrentWebCam().Tilt(TiltDirection::Down);
+		KillTimer(TIMER_TILT_STOP);
+	}
+	else if (GetCurrentWebCam().useLogitechMotionControl) {
+		GetCurrentWebCam().LogiMotionTilt(TiltDirection::Down);
+	}
+	else {
+		GetCurrentWebCam().Tilt(TiltDirection::Down);
+		SetTimer(TIMER_TILT_STOP, GetCurrentWebCam().motorIntervalTime, NULL);
+	}
 }
 
 void CPTZControlDlg::OnBtUp()
 {
 	ResetAllColors();
-	if (m_btUp.InAutoRepeat())
-		GetCurrentWebCam().Tilt(1);
-	else
-		GetCurrentWebCam().MoveTilt(1);
+	if (m_btUp.InAutoRepeat()) {
+		GetCurrentWebCam().Tilt(TiltDirection::Up);
+		KillTimer(TIMER_TILT_STOP);
+	}
+	else if (GetCurrentWebCam().useLogitechMotionControl) {
+		GetCurrentWebCam().LogiMotionTilt(TiltDirection::Up);
+	}
+	else {
+		GetCurrentWebCam().Tilt(TiltDirection::Up);
+		SetTimer(TIMER_TILT_STOP, GetCurrentWebCam().motorIntervalTime, NULL);
+	}
 }
 
 
 void CPTZControlDlg::OnBtLeft()
 {
 	ResetAllColors();
-	if (m_btLeft.InAutoRepeat())
-		GetCurrentWebCam().Pan(-1);
-	else
-		GetCurrentWebCam().MovePan(-1);
+	if (m_btLeft.InAutoRepeat()) {
+		GetCurrentWebCam().Pan(PanDirection::Left);
+		KillTimer(TIMER_PAN_STOP);
+	}
+	else if (GetCurrentWebCam().useLogitechMotionControl) {
+		GetCurrentWebCam().LogiMotionPan(PanDirection::Left);
+	}
+	else {
+		GetCurrentWebCam().Pan(PanDirection::Left);
+		SetTimer(TIMER_PAN_STOP, GetCurrentWebCam().motorIntervalTime, NULL);
+	}
 }
 
 
 void CPTZControlDlg::OnBtRight()
 {
 	ResetAllColors();
-	if (m_btRight.InAutoRepeat())
-		GetCurrentWebCam().Pan(1);
-	else
-		GetCurrentWebCam().MovePan(1);
+	if (m_btRight.InAutoRepeat()) {
+		GetCurrentWebCam().Pan(PanDirection::Right);
+		KillTimer(TIMER_PAN_STOP);
+	}
+	else if (GetCurrentWebCam().useLogitechMotionControl) {
+		GetCurrentWebCam().LogiMotionPan(PanDirection::Right);
+	}
+	else {
+		GetCurrentWebCam().Pan(PanDirection::Right);
+		SetTimer(TIMER_PAN_STOP, GetCurrentWebCam().motorIntervalTime, NULL);	
+	}
 }
 
 
@@ -853,14 +865,19 @@ void CPTZControlDlg::OnTimer(UINT_PTR nIDEvent)
 		// Clear the mem button after some delay
 		ResetMemButton();
 	}
-	
+	else if (nIDEvent == TIMER_PAN_STOP) {
+		GetCurrentWebCam().Pan(PanDirection::Stop);
+	}
+	else if (nIDEvent == TIMER_TILT_STOP) {
+		GetCurrentWebCam().Tilt(TiltDirection::Stop);
+	}
 	__super::OnTimer(nIDEvent);
 }
 
 void CPTZControlDlg::OnBtUnpushed()
 {
-	GetCurrentWebCam().Pan(0);
-	GetCurrentWebCam().Tilt(0);
+	GetCurrentWebCam().Pan(PanDirection::Stop);
+	GetCurrentWebCam().Tilt(TiltDirection::Stop);
 }
 
 void CPTZControlDlg::OnBtSettings()

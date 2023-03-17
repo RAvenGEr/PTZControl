@@ -46,7 +46,7 @@ static bool ParseDevicePath(CString devicePath, UsbIdentifier& usbId)
 
 static bool UsbIdsMatch(const UsbIdentifier value, const UsbIdentifier match)
 {
-	return (value.pid == match.pid && value.vid == match.vid) 
+	return (value == match)
 		|| (match.pid == 0 && match.vid == match.vid) 
 		|| (value.pid == match.pid && match.vid == 0);
 }
@@ -87,12 +87,10 @@ static HRESULT GetDeviceMoniker(T deviceMatch, CComPtr<IMoniker>& pMoniker)
 
 	// Enumerate the monikers and check if we can find a matching device
 	ULONG cFetched;
-	while (pEnumCat->Next(1, &pMoniker, &cFetched) == S_OK)
-	{
+	while (pEnumCat->Next(1, &pMoniker, &cFetched) == S_OK) {
 		CString devicePath;
 		
-		if (DeviceMatches(pMoniker, deviceMatch))
-		{
+		if (DeviceMatches(pMoniker, deviceMatch)) {
 			return S_OK;
 		}
 		pMoniker.Release();
@@ -131,7 +129,7 @@ void WebcamController::CloseDevice()
 	motorIntervalTime = DEFAULT_MOTOR_INTERVAL;
 }
 
-HRESULT WebcamController::IsPeripheralPropertySetSupported()
+HRESULT WebcamController::IsPeripheralPropertySetSupported() const
 {
 	if (!m_spKsControl)
 		return -1;
@@ -142,7 +140,7 @@ HRESULT WebcamController::IsPeripheralPropertySetSupported()
 	extProp.Property.Flags = KSPROPERTY_TYPE_SETSUPPORT | KSPROPERTY_TYPE_TOPOLOGY;
 	extProp.NodeId = m_dwXUPeripheralControlNodeId;
 	extProp.Reserved = 0;
-	ULONG ulBytesReturned = 0;
+	ULONG ulBytesReturned;
 	return m_spKsControl->KsProperty((PKSPROPERTY)&extProp, sizeof(extProp), NULL, 0, &ulBytesReturned);
 }
 
@@ -186,7 +184,6 @@ HRESULT WebcamController::SetProperty(LOGITECH_XU_PROPERTYSET lPropertySet, ULON
 		ulSize,
 		&ulBytesReturned
 	);
-
 
 	return hr;
 }
@@ -310,13 +307,13 @@ int WebcamController::GetCurrentZoom()
 	if (!m_spAMCameraControl)
 		return -1;
 
-	long oldZoom = 0, oldFlags = 0;
-	oldFlags = CameraControl_Flags_Manual;
-	m_spAMCameraControl->Get(CameraControl_Zoom, &oldZoom, &oldFlags);
+	long oldZoom;
+	long flags = CameraControl_Flags_Manual;
+	m_spAMCameraControl->Get(CameraControl_Zoom, &oldZoom, &flags);
 	return oldZoom;
 }
 
-int WebcamController::Zoom(int direction)
+int WebcamController::Zoom(const ZoomDirection zoom)
 {
 	if (!m_spAMCameraControl)
 		return -1;
@@ -329,122 +326,72 @@ int WebcamController::Zoom(int direction)
 	m_spAMCameraControl->GetRange(CameraControl_Zoom, &lZoomMin, &lZoomMax, &lZoomStep, &lZoomDefault, &lFlags);
 
 	long lOldZoom = GetCurrentZoom();
-	if (lOldZoom<lZoomMin || lOldZoom>lZoomMax)
+	if (lOldZoom < lZoomMin || lOldZoom > lZoomMax)
 		lOldZoom = lZoomDefault;
 
 	// Zoom in 150 steps
 	long step = std::max((long)1, (lZoomMax - lZoomMin) / 150);
 
 	// calculate new zoom
-	long lNewZoom = std::min(lZoomMax, lOldZoom + lZoomStep * direction * step);
+	long lNewZoom = std::min(lZoomMax, lOldZoom + lZoomStep * to_underlying(zoom) * step);
 
 	m_spAMCameraControl->Set(CameraControl_Zoom, lNewZoom, CameraControl_Flags_Manual);
 	return lNewZoom;
 }
 
-void WebcamController::Tilt(int yDirection)
+void WebcamController::Tilt(const TiltDirection tilt)
 {
-	if (m_spAMCameraControl)
-		m_spAMCameraControl->Set(KSPROPERTY_CAMERACONTROL_TILT_RELATIVE, yDirection != 0 ? (yDirection < 0 ? -1 : 1) : 0, 0);
+	if (!m_spAMCameraControl)
+		return;
+
+	m_spAMCameraControl->Set(KSPROPERTY_CAMERACONTROL_TILT_RELATIVE, to_underlying(tilt), 0);
 }
 
-void WebcamController::MoveTilt(int yDirection)
+void WebcamController::DigitalTilt(const TiltDirection tilt)
 {
-	if (useLogitechMotionControl && m_dwXUPeripheralControlNodeId != NONODE)
-	{
-		DWORD dwValue = MAKELONG(MAKEWORD(0, 0), MAKEWORD(0, yDirection < 0 ? 1 : -1));
-		SetProperty(XU_PERIPHERAL_CONTROL, XU_PERIPHERALCONTROL_PANTILT_RELATIVE_CONTROL, sizeof(DWORD), &dwValue);
-	}
-	else
-	{
-		if (!m_spAMCameraControl)
-			return;
+	if (!m_spAMCameraControl)
+		return;
 
-		if (m_bMechanicalPanTilt)
-		{
-			if (yDirection != 0)
-			{
-				MMRESULT res = timeBeginPeriod(2);
-				Tilt(yDirection);
-				Sleep(motorIntervalTime);
-				Tilt(0);
-				if (res == TIMERR_NOERROR)
-					timeEndPeriod(2);
-			}
-		}
-		else
-		{
-			
-			if (yDirection != 0)
-			{
-				long lValue;
-				long lFlags;
-				HRESULT hResult = m_spAMCameraControl->Get(CameraControl_Tilt, &lValue, &lFlags);
-				if (S_OK == hResult)
-				{
-					lValue += yDirection;
-					if (yDirection > 0 && lValue > m_lDigitalTiltMax)
-						lValue = m_lDigitalTiltMax;
-					if (yDirection < 0 && lValue < m_lDigitalTiltMin)
-						lValue = m_lDigitalTiltMin;
-					hResult = m_spAMCameraControl->Set(CameraControl_Tilt, lValue, lFlags);
-				}
-			}
-		}
-	}
-	return;
+	long lValue;
+	long lFlags;
+	HRESULT hResult = m_spAMCameraControl->Get(CameraControl_Tilt, &lValue, &lFlags);
+	if (FAILED(hResult))
+		return;
+
+	lValue += to_underlying(tilt);
+	if (lValue > m_lDigitalTiltMax)
+		lValue = m_lDigitalTiltMax;
+	if (lValue < m_lDigitalTiltMin)
+		lValue = m_lDigitalTiltMin;
+	m_spAMCameraControl->Set(CameraControl_Tilt, lValue, lFlags);
 }
 
 
-void WebcamController::Pan(int xDirection)
+void WebcamController::Pan(const PanDirection pan)
 {
-	if (m_spAMCameraControl)
-		m_spAMCameraControl->Set(KSPROPERTY_CAMERACONTROL_PAN_RELATIVE, xDirection != 0 ? (xDirection < 0 ? -1 : 1) : 0, 0);
+	if (!m_spAMCameraControl)
+		return;
+
+	m_spAMCameraControl->Set(KSPROPERTY_CAMERACONTROL_PAN_RELATIVE, to_underlying(pan), 0);
 }
 
-void WebcamController::MovePan(int xDirection)
+void WebcamController::DigitalPan(const PanDirection pan)
 {
-	if (useLogitechMotionControl)
-	{
-		DWORD dwValue = MAKELONG(MAKEWORD(0, xDirection), MAKEWORD(0, 0));
-		SetProperty(XU_PERIPHERAL_CONTROL, XU_PERIPHERALCONTROL_PANTILT_RELATIVE_CONTROL, sizeof(DWORD), &dwValue);
-	}
-	else
-	{
-		if (!m_spAMCameraControl)
-			return;
+	if (!m_spAMCameraControl)
+		return;
 
-		if (m_bMechanicalPanTilt)
-		{
-			if (xDirection != 0)
-			{
-				MMRESULT res = timeBeginPeriod(2);
-				Pan(xDirection);
-				Sleep(motorIntervalTime);
-				Pan(0);
-				if (res == TIMERR_NOERROR)
-					timeEndPeriod(2);
-			}
-		}
-		else
-		{
-			long lValue(0), lFlags(0);
-			if (xDirection != 0)
-			{
-				HRESULT hResult = m_spAMCameraControl->Get(CameraControl_Pan, &lValue, &lFlags);
-				if (S_OK == hResult)
-				{
-					lValue += xDirection;
-					if (xDirection > 0 && lValue > m_lDigitalPanMax)
-						lValue = m_lDigitalPanMax;
-					if (xDirection < 0 && lValue < m_lDigitalPanMin)
-						lValue = m_lDigitalPanMin;
-					hResult = m_spAMCameraControl->Set(CameraControl_Pan, lValue, lFlags);
-				}
-			}
-		}
-	}
-	return;
+	long lValue;
+	long lFlags;
+	HRESULT hResult = m_spAMCameraControl->Get(CameraControl_Pan, &lValue, &lFlags);
+	if (FAILED(hResult))
+		return;
+
+	lValue += to_underlying(pan);
+	if (lValue > m_lDigitalPanMax)
+		lValue = m_lDigitalPanMax;
+	if (lValue < m_lDigitalPanMin)
+		lValue = m_lDigitalPanMin;
+	m_spAMCameraControl->Set(CameraControl_Pan, lValue, lFlags);
 }
 
 
@@ -531,6 +478,18 @@ bool WebcamController::IsExtensionUnitSupported(CComPtr<IKsControl> pKsControl, 
 	ULONG ulBytesReturned = 0;
 	HRESULT hr = pKsControl->KsProperty((PKSPROPERTY)&extProp, sizeof(extProp), NULL, 0, &ulBytesReturned);
 	return SUCCEEDED(hr);
+}
+
+void WebcamController::LogiMotionTilt(const TiltDirection tilt)
+{
+	DWORD dwValue = MAKELONG(MAKEWORD(0, 0), MAKEWORD(0, -to_underlying(tilt)));
+	SetProperty(XU_PERIPHERAL_CONTROL, XU_PERIPHERALCONTROL_PANTILT_RELATIVE_CONTROL, sizeof(DWORD), &dwValue);
+}
+
+void WebcamController::LogiMotionPan(const PanDirection pan)
+{
+	DWORD dwValue = MAKELONG(MAKEWORD(0, -to_underlying(pan)), MAKEWORD(0, 0));
+	SetProperty(XU_PERIPHERAL_CONTROL, XU_PERIPHERALCONTROL_PANTILT_RELATIVE_CONTROL, sizeof(DWORD), &dwValue);
 }
 
 
