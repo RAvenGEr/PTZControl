@@ -600,7 +600,7 @@ BOOL CPTZControlDlg::OnInitDialog()
 	SetFocus();
 
 	// Move all cams to home position. And WebCam 0 will be the active one.
-	if (theApp.m_bNoReset)
+	if (!theApp.m_bReset)
 	{
 		// Activate camera 0.
 		if (!m_webCams.empty())

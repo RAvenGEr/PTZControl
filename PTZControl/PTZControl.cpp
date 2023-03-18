@@ -20,7 +20,7 @@ class CPTZControlCommandLineInfo : public CCommandLineInfo
 public:
 	// Construction
 	CPTZControlCommandLineInfo() 
-		: m_bNoReset(false)
+		: m_bReset(false)
 		, m_bNoGuard(false)
 		, m_bShowDevices(false)
 	{
@@ -35,7 +35,7 @@ public:
 public:
 	// Data
 	CString m_strDevName;		// Device name from the command line to search for
-	bool	m_bNoReset;			// No Reset of web cam
+	bool	m_bReset;			// Reset of web cam positions at startup
 	bool	m_bNoGuard;			// Prevent a guard thread
 	bool	m_bShowDevices;		// SHow message box with devicenames on open.
 
@@ -66,9 +66,9 @@ void CPTZControlCommandLineInfo::ParseParam(const char* pszParam,BOOL bFlag,BOOL
 			m_strDevName = pszParam;
 			::PathUnquoteSpaces(CStrBuf(m_strDevName,0));
 		}
-		else if (_stricmp(pszParam, "noreset")==0)
+		else if (_stricmp(pszParam, "reset")==0)
 		{
-			m_bNoReset = true;
+			m_bReset = true;
 		}
 		else if (_stricmp(pszParam, "noguard") == 0)
 		{
@@ -100,7 +100,7 @@ END_MESSAGE_MAP()
 // CPTZControlApp construction
 
 CPTZControlApp::CPTZControlApp()
-	: m_bNoReset(false)
+	: m_bReset(false)
 	, m_bNoGuard(false)
 	, m_bShowDevices(false)
 	, m_pDlg(nullptr)
@@ -142,7 +142,7 @@ BOOL CPTZControlApp::InitInstance()
 	m_strDevName = cmdInfo.m_strDevName;
 
 	// Registry is overruled command line
-	m_bNoReset = GetProfileInt(REG_OPTIONS,REG_NORESET,FALSE)!=0 || cmdInfo.m_bNoReset;
+	m_bReset = GetProfileInt(REG_OPTIONS,REG_RESET,FALSE)!=0 || cmdInfo.m_bReset;
 	m_bNoGuard = GetProfileInt(REG_OPTIONS,REG_NOGUARD,FALSE)!=0 || cmdInfo.m_bNoGuard;
 	m_bShowDevices = cmdInfo.m_bShowDevices;
 

@@ -24,7 +24,7 @@
 #define REG_DEVICENAME					_T("DeviceName")
 
 #define REG_OPTIONS	_T("Options")
-#define REG_NORESET	_T("NoReset")
+#define REG_RESET	_T("Reset")
 #define REG_NOGUARD	_T("NoGuard")
 
 #define TIMER_FOCUS_CHECK	4711
@@ -58,7 +58,7 @@ public:
 
 	// command line flags
 	CString m_strDevName;		// Device name from the command line to search for
-	bool	m_bNoReset;			// No Reset of web cam
+	bool	m_bReset;			// Reset of web cam on application startup
 	bool	m_bNoGuard;			// Prevent a guard thread
 	bool	m_bShowDevices;
 
