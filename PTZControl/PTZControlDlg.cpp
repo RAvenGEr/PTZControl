@@ -4,6 +4,8 @@
 
 #include "pch.h"
 #include "framework.h"
+#include <algorithm>
+#include <dbt.h>
 #include "PTZControl.h"
 #include "PTZControlDlg.h"
 #include "SettingsDlg.h"
@@ -165,6 +167,12 @@ void CPTZRepeatingButton::OnTimer(UINT_PTR nIDEvent)
 
 	__super::OnTimer(nIDEvent);
 }
+
+BEGIN_MESSAGE_MAP(CPTZRepeatingButton, CMFCButton)
+	ON_WM_LBUTTONDOWN()
+	ON_WM_TIMER()
+	ON_WM_LBUTTONUP()
+END_MESSAGE_MAP()
 
 //////////////////////////////////////////////////////////////////////////////////////////
 
@@ -345,6 +353,7 @@ void CPTZControlDlg::ResetAllColors()
 void CPTZControlDlg::FindCompatibleCams()
 {
 	std::vector<WebcamController> camsFound;
+	std::vector<CString> camDevNames;
 	//---------------------------------------------------------------------
 	// INIT AND FIND WEB CAMS
 	// 
@@ -379,7 +388,9 @@ void CPTZControlDlg::FindCompatibleCams()
 
 	for (auto device : aDevices) {
 		camsFound.emplace_back();
-		if (!OpenWebCam(camsFound.back(), device.devicePath)) {
+		if (OpenWebCam(camsFound.back(), device.devicePath)) {
+			camDevNames.push_back(device.devicePath);
+		} else {
 			camsFound.pop_back();
 		}
 	}
@@ -391,6 +402,10 @@ void CPTZControlDlg::FindCompatibleCams()
 		AfxMessageBox(IDP_ERR_NO_CAMERA, MB_ICONERROR);
 	}
 	m_webCams.insert(m_webCams.end(), std::make_move_iterator(camsFound.begin()), std::make_move_iterator(camsFound.end()));
+	m_camDevPaths.insert(m_camDevPaths.end(), std::make_move_iterator(camDevNames.begin()), std::make_move_iterator(camDevNames.end()));
+	if (m_webCams.size() != m_camDevPaths.size()) {
+		AfxMessageBox(L"Unexpected result of device scan");
+	}
 }
 
 void CPTZControlDlg::ResetMemButton()
@@ -443,34 +458,6 @@ void CPTZControlDlg::SetActiveCam(size_t cam)
 		size_t iWebCam = 0;
 		for (auto &btn : m_btWebCam)
 			Enable(btn,m_currentCam==iWebCam++);
-	}
-}
-
-//////////////////////////////////////////////////////////////////////////
-//	It seams that in some cases a camera my block.
-//	This thread should help that the blocking thread is detected. and the
-//	application terminates.
-
-UINT AFX_CDECL CPTZControlDlg::GuardThread(LPVOID p)
-{
-	auto *pWnd = static_cast<CPTZControlDlg*>(p);
-
-	// This thread end when the application exists.
-	// For ever all 2000 seconds check if the application still runs and accepts messages.
-	for (;;)
-	{
-		// Check if we have an event, wait for 1 sec
-		CSingleLock lock(&pWnd->m_evTerminating,FALSE);
-		if (lock.Lock(1000))
-			// Event is set.
-			return 0;
-		
-		// Check if the application is blocking
-		if (::SendMessageTimeout(pWnd->GetSafeHwnd(), WM_NULL, 0, 0, SMTO_ABORTIFHUNG | SMTO_NORMAL, 1000, NULL)==0)
-		{
-			// Exit the current process
-			::ExitProcess(10);
-		}			
 	}
 }
 
@@ -532,6 +519,19 @@ BOOL CPTZControlDlg::OnInitDialog()
 		btn.SetCheckStyle();
 
 	FindCompatibleCams();
+
+	DEV_BROADCAST_DEVICEINTERFACE NotificationFilter;
+
+	ZeroMemory(&NotificationFilter, sizeof(NotificationFilter));
+	NotificationFilter.dbcc_size = sizeof(DEV_BROADCAST_DEVICEINTERFACE);
+	NotificationFilter.dbcc_devicetype = DBT_DEVTYP_DEVICEINTERFACE;
+	NotificationFilter.dbcc_classguid = KSCATEGORY_CAPTURE;
+
+	m_hDeviceNotify = RegisterDeviceNotification(
+		GetSafeHwnd(),
+		&NotificationFilter,        // type of device
+		DEVICE_NOTIFY_WINDOW_HANDLE // type of recipient handle
+	);
 
 	//---------------------------------------------------------------------
 	// ADJUST THE DIALOG
@@ -649,6 +649,48 @@ void CPTZControlDlg::OnPaint()
 	}
 }
 
+BOOL CPTZControlDlg::OnDeviceChange(UINT nEventType, DWORD_PTR dwData)
+{
+	BOOL result = __super::OnDeviceChange(nEventType, dwData);
+	auto broadcast = reinterpret_cast<DEV_BROADCAST_HDR*>(dwData);
+	switch (nEventType)
+	{
+	case DBT_DEVICEARRIVAL:
+		if (broadcast->dbch_devicetype == DBT_DEVTYP_DEVICEINTERFACE) {
+			auto devint = reinterpret_cast<DEV_BROADCAST_DEVICEINTERFACE*>(dwData);
+			CString path{ devint->dbcc_name };
+			path.MakeLower();
+			auto res = std::find(m_camDevPaths.begin(), m_camDevPaths.end(), path);
+			if (res != m_camDevPaths.end()) {
+				size_t pos = res - m_camDevPaths.begin();
+				HRESULT hr = m_webCams[pos].OpenDevice(path);
+				if (SUCCEEDED(hr))
+					m_btWebCam[pos].EnableWindow(TRUE);
+			}
+		}
+		break;
+	case DBT_DEVICEREMOVECOMPLETE:
+		if (broadcast->dbch_devicetype == DBT_DEVTYP_DEVICEINTERFACE) {
+			auto devint = reinterpret_cast<DEV_BROADCAST_DEVICEINTERFACE*>(dwData);
+			CString path{ devint->dbcc_name };
+			path.MakeLower();
+			auto res = std::find(m_camDevPaths.begin(), m_camDevPaths.end(), path);
+			if (res != m_camDevPaths.end()) {
+				size_t pos = res - m_camDevPaths.begin();
+				if (m_webCams.size() > 1) {
+					if (m_currentCam == pos) {
+						SetActiveCam(pos == 0 ? 1 : 0);
+					}
+					m_btWebCam[pos].EnableWindow(FALSE);
+				}
+				m_webCams[pos].CloseDevice();
+			}
+		}
+		break;
+	}
+	return result;
+}
+
 // The system calls this function to obtain the cursor to display while the user drags
 //  the minimized window.
 HCURSOR CPTZControlDlg::OnQueryDragIcon()
@@ -672,6 +714,8 @@ void CPTZControlDlg::OnClose()
 	theApp.WriteProfileInt(REG_WINDOW,REG_WINDOW_POSX,rect.left);
 	theApp.WriteProfileInt(REG_WINDOW,REG_WINDOW_POSY,rect.top);
 
+	UnregisterDeviceNotification(m_hDeviceNotify);
+
 	DestroyWindow();
 }
 
@@ -680,19 +724,15 @@ void CPTZControlDlg::OnBtExit()
 	PostMessage(WM_CLOSE);
 }
 
-
 void CPTZControlDlg::OnOK()
 {
 	// Ignore
 }
 
-
 void CPTZControlDlg::OnCancel()
 {
 	// Ignore
 }
-
-
 
 void CPTZControlDlg::OnBtMemory()
 {
@@ -708,13 +748,6 @@ void CPTZControlDlg::OnBtMemory()
 	else
 		m_btMemory.SetFaceColor(COLORREF(-1),TRUE);
 }
-
-BEGIN_MESSAGE_MAP(CPTZRepeatingButton, CMFCButton)
-	ON_WM_LBUTTONDOWN()
-	ON_WM_TIMER()
-	ON_WM_LBUTTONUP()
-END_MESSAGE_MAP()
-
 
 BOOL CPTZControlDlg::OnBtPreset(UINT nId)
 {
@@ -922,3 +955,30 @@ void CPTZControlDlg::OnBtSettings()
 	SetActiveCam(m_currentCam);
 }
 
+//////////////////////////////////////////////////////////////////////////
+//	It seams that in some cases a camera my block.
+//	This thread should help that the blocking thread is detected. and the
+//	application terminates.
+
+UINT AFX_CDECL CPTZControlDlg::GuardThread(LPVOID p)
+{
+	auto* pWnd = static_cast<CPTZControlDlg*>(p);
+
+	// This thread end when the application exists.
+	// For ever all 2000 seconds check if the application still runs and accepts messages.
+	for (;;)
+	{
+		// Check if we have an event, wait for 1 sec
+		CSingleLock lock(&pWnd->m_evTerminating, FALSE);
+		if (lock.Lock(1000))
+			// Event is set.
+			return 0;
+
+		// Check if the application is blocking
+		if (::SendMessageTimeout(pWnd->GetSafeHwnd(), WM_NULL, 0, 0, SMTO_ABORTIFHUNG | SMTO_NORMAL, 1000, NULL) == 0)
+		{
+			// Exit the current process
+			::ExitProcess(10);
+		}
+	}
+}

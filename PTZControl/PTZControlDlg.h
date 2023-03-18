@@ -78,6 +78,46 @@ public:
 	static constexpr size_t NUM_MAX_WEBCAMS{ 3 };
 
 protected:
+	// message map functions
+	virtual void DoDataExchange(CDataExchange* pDX);	// DDX/DDV support
+	virtual BOOL OnInitDialog();
+	virtual void PostNcDestroy();
+	virtual void OnOK();
+	virtual void OnCancel();
+	virtual BOOL PreTranslateMessage(MSG* pMsg);
+	virtual BOOL OnCommand(WPARAM wParam, LPARAM lParam) override;
+	afx_msg BOOL OnDeviceChange(UINT nEventType, DWORD_PTR dwData);
+	afx_msg void OnPaint();
+	afx_msg HCURSOR OnQueryDragIcon();
+	afx_msg void OnBtExit();
+	afx_msg void OnClose();
+	afx_msg LRESULT OnNcHitTest(CPoint point);
+	afx_msg void OnBtMemory();
+	afx_msg BOOL OnBtPreset(UINT nId);
+	afx_msg BOOL OnBtWebCam(UINT nId);
+	afx_msg void OnSetFocus(CWnd* pOldWnd);
+	afx_msg void OnBtZoomIn();
+	afx_msg void OnBtZoomOut();
+	afx_msg void OnBtUp();
+	afx_msg void OnBtLeft();
+	afx_msg void OnBtHome();
+	afx_msg void OnBtRight();
+	afx_msg void OnBtDown();
+	afx_msg void OnTimer(UINT_PTR nIDEvent);
+	afx_msg void OnBtUnpushed();
+	afx_msg void OnBtSettings();
+
+	DECLARE_MESSAGE_MAP()
+
+private:
+	void ResetMemButton();
+	void ResetAllColors();
+
+	void FindCompatibleCams();
+
+	WebcamController& GetCurrentWebCam();
+	void SetActiveCam(size_t cam);
+
 	CPTZRepeatingButton m_btZoomIn;
 	CPTZRepeatingButton m_btZoomOut;
 	CPTZRepeatingButton m_btUp;
@@ -91,13 +131,18 @@ protected:
 	CPTZButton m_btSettings;
 	CPTZButton m_btWebCam[NUM_MAX_WEBCAMS];
 
-	std::vector<WebcamController> m_webCams;
+	HICON m_hIcon;
 
-// Map to save the colors of the buttons per Webcam
-	typedef std::map<UINT,COLORREF> TMAP_BTNCOLORS;
+	HDEVNOTIFY m_hDeviceNotify{};
+
+	std::vector<WebcamController> m_webCams;
+	std::vector<CString> m_camDevPaths;
+
+	// Map to save the colors of the buttons per Webcam
+	typedef std::map<UINT, COLORREF> TMAP_BTNCOLORS;
 	TMAP_BTNCOLORS m_aMapBtnColors[NUM_MAX_WEBCAMS];
 
-// Tooltips per WebCam
+	// Tooltips per WebCam
 	CString m_strTooltips[NUM_MAX_WEBCAMS][WebcamController::NUM_PRESETS];
 
 	HACCEL m_hAccel;
@@ -105,50 +150,8 @@ protected:
 
 	size_t m_currentCam;
 
-	void FindCompatibleCams();
-
-	void ResetAllColors();
-	WebcamController &GetCurrentWebCam();
-	void SetActiveCam(size_t cam);
-
 	// Guard thread
 	CEvent	m_evTerminating;
 	CWinThread* m_pGuardThread;
 	static UINT AFX_CDECL GuardThread(LPVOID hWnd); // AFX_THREADPROC
-
-// Implementation
-
-	HICON m_hIcon;
-
-	// Generated message map functions
-	virtual void DoDataExchange(CDataExchange* pDX);	// DDX/DDV support
-	virtual BOOL OnInitDialog();
-	virtual void PostNcDestroy();
-	virtual void OnOK();
-	virtual void OnCancel();
-	virtual BOOL PreTranslateMessage(MSG* pMsg);
-	virtual BOOL OnCommand(WPARAM wParam, LPARAM lParam) override;
-	afx_msg void OnPaint();
-	afx_msg HCURSOR OnQueryDragIcon();
-	DECLARE_MESSAGE_MAP()
-	afx_msg void OnBtExit();
-	afx_msg void OnClose();
-	afx_msg LRESULT OnNcHitTest(CPoint point);
-	afx_msg void OnBtMemory();
-	afx_msg BOOL OnBtPreset(UINT nId);
-
-	void ResetMemButton();
-
-	afx_msg BOOL OnBtWebCam(UINT nId);
-	afx_msg void OnSetFocus(CWnd* pOldWnd);
-	afx_msg void OnBtZoomIn();
-	afx_msg void OnBtZoomOut();
-	afx_msg void OnBtUp();
-	afx_msg void OnBtLeft();
-	afx_msg void OnBtHome();
-	afx_msg void OnBtRight();
-	afx_msg void OnBtDown();
-	afx_msg void OnTimer(UINT_PTR nIDEvent);
-	afx_msg void OnBtUnpushed();
-	afx_msg void OnBtSettings();
 };
