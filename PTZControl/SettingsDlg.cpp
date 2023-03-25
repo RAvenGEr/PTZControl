@@ -6,6 +6,13 @@
 #include "SettingsDlg.h"
 #include "afxdialogex.h"
 
+#ifdef min
+#undef min
+#endif
+
+#ifdef max
+#undef max
+#endif
 
 // CSettingsDlg dialog
 
