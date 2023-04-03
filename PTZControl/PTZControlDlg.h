@@ -8,6 +8,7 @@
 
 #include "resource.h"
 #include "WebcamControl.h"
+#include "Configuration.hpp"
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // CPTZButton
@@ -73,7 +74,7 @@ public:
 	CPTZControlDlg(CWnd* pParent = nullptr);	// standard constructor
 	~CPTZControlDlg();
 // Dialog Data
-	enum { IDD = IDD_PTZCONTROL_DIALOG };
+	enum { IDD = IDD_PTZCONTROL };
 
 	static constexpr size_t NUM_MAX_WEBCAMS{ 3 };
 
@@ -115,7 +116,10 @@ private:
 
 	void FindCompatibleCams();
 
-	WebcamController& GetCurrentWebCam();
+	WebcamController& GetCurrentWebCam() {
+		return m_webCams[m_currentCam];
+	}
+
 	void SetActiveCam(size_t cam);
 
 	CPTZRepeatingButton m_btZoomIn;
@@ -135,18 +139,16 @@ private:
 
 	HDEVNOTIFY m_hDeviceNotify{};
 
+	bool m_useLogitechControl{ false };
+	int m_motorTime{ 70 };
+
 	std::vector<WebcamController> m_webCams;
-	std::vector<CString> m_camDevPaths;
 
 	// Map to save the colors of the buttons per Webcam
 	typedef std::map<UINT, COLORREF> TMAP_BTNCOLORS;
 	TMAP_BTNCOLORS m_aMapBtnColors[NUM_MAX_WEBCAMS];
 
-	// Tooltips per WebCam
-	CString m_strTooltips[NUM_MAX_WEBCAMS][WebcamController::NUM_PRESETS];
-
 	HACCEL m_hAccel;
-	CString m_strCameraDeviceNames;
 
 	size_t m_currentCam;
 

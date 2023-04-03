@@ -13,20 +13,6 @@
 
 //////////////////////////////////////////////////////////////////////////
 
-#define REG_WINDOW		_T("Window")
-#define REG_WINDOW_POSX	_T("X")
-#define REG_WINDOW_POSY	_T("Y")
-#define REG_TOOLTIP		_T("Tooltip%d")
-
-#define REG_DEVICE						_T("Device")
-#define REG_USELOGOTECHMOTIONCONTROL	_T("LogitechMotionControl")
-#define REG_MOTORINTERVALTIMER			_T("MotorIntervalTimer")
-#define REG_DEVICENAME					_T("DeviceName")
-
-#define REG_OPTIONS	_T("Options")
-#define REG_RESET	_T("Reset")
-#define REG_NOGUARD	_T("NoGuard")
-
 #define TIMER_FOCUS_CHECK	4711
 #define TIMER_AUTO_REPEAT	4712
 #define TIMER_CLEAR_MEMORY	4713
@@ -56,15 +42,20 @@ public:
 
 	virtual int ExitInstance();
 
-	// command line flags
-	CString m_strDevName;		// Device name from the command line to search for
-	bool	m_bReset;			// Reset of web cam on application startup
-	bool	m_bNoGuard;			// Prevent a guard thread
-	bool	m_bShowDevices;
+	const Configuration& conf() const {
+		return m_conf;
+	}
+
+	Configuration& mut_conf() {
+		return m_conf;
+	}
+
+	void WriteConfigurationToFile();
 
 	DECLARE_MESSAGE_MAP()
 
 private:
+	Configuration m_conf;
 	CPTZControlDlg* m_pDlg;
 };
 

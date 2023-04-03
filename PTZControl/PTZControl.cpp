@@ -6,88 +6,52 @@
 #include "framework.h"
 #include "PTZControl.h"
 
+#include "Configuration.hpp"
+
+#include <string>
+
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
-
-/////////////////////////////////////////////////////////////////////////////
-//	CAgvipCommandLineInfo
-//		The program must be started with the parameters /conn:<connectionfile>
-//		and /user:<userid>. For the Debug mode special Options are prepared.
 
 class CPTZControlCommandLineInfo : public CCommandLineInfo
 {
 public:
 	// Construction
-	CPTZControlCommandLineInfo() 
-		: m_bReset(false)
-		, m_bNoGuard(false)
-		, m_bShowDevices(false)
+	CPTZControlCommandLineInfo(Configuration& conf) : m_conf(conf)
 	{
 	}
 
-	// Overwritten virtual
-	virtual void ParseParam(const TCHAR* pszParam,BOOL bFlag,BOOL bLast);
-#ifdef _UNICODE
-	virtual void ParseParam(const char* pszParam, BOOL bFlag, BOOL bLast);
-#endif
+	void ParseParam(const TCHAR* pszParam, BOOL bFlag, BOOL bLast) override {
+		if (bFlag) {
+			CString param{ pszParam };
+			if (param.CompareNoCase(L"reset") == 0) {
+				m_conf.SetResetOver(true);
+			}
+			else if (param.CompareNoCase(L"noguard") == 0) {
+				m_conf.SetNoGuardOver(true);
+			}
+			else if (param.CompareNoCase(L"showdevices") == 0) {
+				m_conf.SetShowDevices(true);
+			}
+			else if (param.Left(7).CompareNoCase(L"device:") == 0) {
+				CString deviceName = param.Mid(7);
+				::PathUnquoteSpaces(CStrBuf(deviceName, 0));
 
-public:
-	// Data
-	CString m_strDevName;		// Device name from the command line to search for
-	bool	m_bReset;			// Reset of web cam positions at startup
-	bool	m_bNoGuard;			// Prevent a guard thread
-	bool	m_bShowDevices;		// SHow message box with devicenames on open.
-
-	// Currently not used (may be used if we ant yes/no/undefined)
-	enum class Mode
-	{
-		False = 0,
-		True = 1,
-		Undefined = -1,
-	};
-};
-
-#ifdef _UNICODE
-void CPTZControlCommandLineInfo::ParseParam(const TCHAR* pszParam,BOOL bFlag,BOOL bLast)
-{
-	ParseParam(CT2CA(pszParam),bFlag,bLast);
-}
-#endif
-
-void CPTZControlCommandLineInfo::ParseParam(const char* pszParam,BOOL bFlag,BOOL bLast)
-{
-	if (bFlag)
-	{
-		if (_strnicmp(pszParam,"device:",7)==0)
-		{
-			// Get address set name
-			pszParam += 7;
-			m_strDevName = pszParam;
-			::PathUnquoteSpaces(CStrBuf(m_strDevName,0));
-		}
-		else if (_stricmp(pszParam, "reset")==0)
-		{
-			m_bReset = true;
-		}
-		else if (_stricmp(pszParam, "noguard") == 0)
-		{
-			m_bNoGuard = true;
-		}
-		else if (_stricmp(pszParam, "showdevices") == 0)
-		{
-			m_bShowDevices = true;
+			}
+			else
+				ParseParamFlag(CT2CA(pszParam));
 		}
 		else
-			ParseParamFlag(pszParam);
+			ParseParamNotFlag(pszParam);
+
+		// Standard implementation
+		ParseLast(bLast);
 	}
-	else
-		ParseParamNotFlag(pszParam);
 
-	// Standard implementation
-	ParseLast(bLast);
-}
-
+private:
+	Configuration& m_conf;
+};
 
 //////////////////////////////////////////////////////////////////////////
 // CPTZControlApp
@@ -100,17 +64,14 @@ END_MESSAGE_MAP()
 // CPTZControlApp construction
 
 CPTZControlApp::CPTZControlApp()
-	: m_bReset(false)
-	, m_bNoGuard(false)
-	, m_bShowDevices(false)
-	, m_pDlg(nullptr)
+	: m_pDlg(nullptr)
 {
 }
 
-
 // The one and only CPTZControlApp object
-
 CPTZControlApp theApp;
+
+static constexpr auto CONFIGURATION_PATH{ L"\\MRi-Software\\PTZ" };
 
 
 //////////////////////////////////////////////////////////////////////////
@@ -129,31 +90,30 @@ BOOL CPTZControlApp::InitInstance()
 	if (!SUCCEEDED(hr))
 		return FALSE;
 
-//-------------Registry-------------------------------------------------
+	// Load configuration file from AppData local path
+	PWSTR pszPath = NULL;
+	hr = SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, NULL, &pszPath);
+	if (SUCCEEDED(hr)) {
+		const std::wstring appData{ pszPath };
+		const std::wstring tomlPath = appData + CONFIGURATION_PATH + L"\\config.toml";
+		m_conf.LoadFromFile(tomlPath);
+		CoTaskMemFree(pszPath);
+	}
 
-	SetRegistryKey(_T("MRi-Software"));
+	//-------------Commandline parsing--------------------------------------
 
-//-------------Commandline parsing--------------------------------------
-
-// Parse command line for standard shell commands, DDE, file open
-	CPTZControlCommandLineInfo cmdInfo;
+	// Parse command line for standard shell commands, DDE, file open
+	CPTZControlCommandLineInfo cmdInfo(m_conf);
 	ParseCommandLine(cmdInfo);
 
-	m_strDevName = cmdInfo.m_strDevName;
-
-	// Registry is overruled command line
-	m_bReset = GetProfileInt(REG_OPTIONS,REG_RESET,FALSE)!=0 || cmdInfo.m_bReset;
-	m_bNoGuard = GetProfileInt(REG_OPTIONS,REG_NOGUARD,FALSE)!=0 || cmdInfo.m_bNoGuard;
-	m_bShowDevices = cmdInfo.m_bShowDevices;
-
-//-------------Main ----------------------------------------------------
+	//-------------Main ----------------------------------------------------
 
 	// Create the Dialog
 	m_pDlg = new CPTZControlDlg();
-	if (m_pDlg->Create(CPTZControlDlg::IDD))
-		m_pMainWnd = m_pDlg;
-	else
+	if (!m_pDlg->Create(CPTZControlDlg::IDD))
 		return FALSE;
+
+	m_pMainWnd = m_pDlg;
 
 	// Succeeded
 	return TRUE;
@@ -168,4 +128,19 @@ int CPTZControlApp::ExitInstance()
 #endif
 	CoUninitialize();
 	return __super::ExitInstance();
+}
+
+void CPTZControlApp::WriteConfigurationToFile()
+{
+	// Load configuration file from AppData local path
+	PWSTR pszPath = NULL;
+	HRESULT hr = SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, NULL, &pszPath);
+	if (SUCCEEDED(hr)) {
+		const std::wstring appData{ pszPath };
+		const std::wstring configDir = appData + CONFIGURATION_PATH;
+		SHCreateDirectory(NULL, configDir.c_str());
+		const std::wstring tomlPath = configDir + L"\\config.toml";
+		m_conf.WriteToFile(tomlPath);
+		CoTaskMemFree(pszPath);
+	}
 }

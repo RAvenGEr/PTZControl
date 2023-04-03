@@ -24,7 +24,7 @@
 /**
 * Checks whether the device represented by the given IMoniker matches the given device path
 */
-static bool DevicePathFromMoniker(CComPtr<IMoniker> pMoniker, CString &devicePath)
+static bool DevicePathFromMoniker(CComPtr<IMoniker> pMoniker, CString& devicePath)
 {
 	CComPtr<IPropertyBag> pPropBag;
 	// Open the device properties
@@ -45,32 +45,6 @@ static bool DevicePathFromMoniker(CComPtr<IMoniker> pMoniker, CString &devicePat
 	return true;
 }
 
-static bool ParseDevicePath(CString devicePath, UsbIdentifier& usbId)
-{
-	if (swscanf_s(devicePath.MakeLower(), L"\\\\?\\usb#vid_%04x&pid_%04x", &usbId.vid, &usbId.pid) != 2)
-		return false;
-	return true;
-}
-
-static bool UsbIdsMatch(const UsbIdentifier value, const UsbIdentifier match)
-{
-	return (value == match)
-		|| (match.pid == 0 && match.vid == match.vid) 
-		|| (value.pid == match.pid && match.vid == 0);
-}
-
-static bool DeviceMatches(CComPtr<IMoniker> pMoniker, const UsbIdentifier usbId)
-{
-	if (usbId.vid == 0 && usbId.pid == 0) {
-		return true;
-	}
-	CString devicePath;
-	UsbIdentifier idFromPath;
-	return DevicePathFromMoniker(pMoniker, devicePath) 
-		&& ParseDevicePath(devicePath, idFromPath) 
-		&& UsbIdsMatch(idFromPath, usbId);
-}
-
 static bool DeviceMatches(CComPtr<IMoniker> pMoniker, const CString devicePath)
 {
 	CString devicePathMoniker;
@@ -78,8 +52,7 @@ static bool DeviceMatches(CComPtr<IMoniker> pMoniker, const CString devicePath)
 		&& (devicePathMoniker == devicePath);
 }
 
-template <typename T>
-static HRESULT GetDeviceMoniker(T deviceMatch, CComPtr<IMoniker>& pMoniker)
+static HRESULT GetDeviceMoniker(const CString& deviceMatch, CComPtr<IMoniker>& pMoniker)
 {
 	// Create the System Device Enumerator
 	CComPtr<ICreateDevEnum> pSysDevEnum;
@@ -96,8 +69,6 @@ static HRESULT GetDeviceMoniker(T deviceMatch, CComPtr<IMoniker>& pMoniker)
 	// Enumerate the monikers and check if we can find a matching device
 	ULONG cFetched;
 	while (pEnumCat->Next(1, &pMoniker, &cFetched) == S_OK) {
-		CString devicePath;
-		
 		if (DeviceMatches(pMoniker, deviceMatch)) {
 			return S_OK;
 		}
@@ -106,23 +77,27 @@ static HRESULT GetDeviceMoniker(T deviceMatch, CComPtr<IMoniker>& pMoniker)
 	return HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND);
 }
 
-HRESULT WebcamController::OpenDevice(const CString &devicePath)
+HRESULT WebcamController::OpenDevice(const WebcamDevice& device)
 {
 	CComPtr<IMoniker> pMoniker;
-	HRESULT hr = GetDeviceMoniker(devicePath, pMoniker);
+	HRESULT hr = GetDeviceMoniker(device.path, pMoniker);
+	if (FAILED(hr) || !pMoniker)
+		return hr;
+	hr = OpenDevice(pMoniker);
+	if (SUCCEEDED(hr))
+		new (&m_device) WebcamDevice(device);
+	return hr;
+}
+
+HRESULT WebcamController::ReOpenDevice()
+{
+	CComPtr<IMoniker> pMoniker;
+	HRESULT hr = GetDeviceMoniker(m_device.path, pMoniker);
 	if (FAILED(hr) || !pMoniker)
 		return hr;
 	return OpenDevice(pMoniker);
 }
 
-HRESULT WebcamController::OpenDevice(const UsbIdentifier usbId)
-{
-	CComPtr<IMoniker> pMoniker;
-	HRESULT hr = GetDeviceMoniker(usbId, pMoniker);
-	if (FAILED(hr) || !pMoniker)
-		return hr;
-	return OpenDevice(pMoniker);
-}
 
 void WebcamController::CloseDevice()
 {
@@ -133,8 +108,6 @@ void WebcamController::CloseDevice()
 	m_dwXUVideoPipeControlNodeId = NONODE;
 	m_dwXUTestDebugNodeId = NONODE;
 	m_dwXUPeripheralControlNodeId = NONODE;
-
-	motorIntervalTime = DEFAULT_MOTOR_INTERVAL;
 }
 
 HRESULT WebcamController::IsPeripheralPropertySetSupported() const
@@ -506,7 +479,7 @@ std::vector<WebcamDevice> WebcamController::CompatibleDevices(std::vector<CStrin
 	std::vector<WebcamDevice> devices;
 	bool not_filtered = deviceNameFilters.empty();
 	if (!not_filtered) {
-		for (auto name : deviceNameFilters) {
+		for (const auto& name : deviceNameFilters) {
 			if (name == _T("*")) {
 				not_filtered = true;
 			}
@@ -514,7 +487,7 @@ std::vector<WebcamDevice> WebcamController::CompatibleDevices(std::vector<CStrin
 	}
 
 	auto deviceNameMatch = [&](const CString& deviceName) {
-		for (auto filter : deviceNameFilters) {
+		for (const auto& filter : deviceNameFilters) {
 			if (deviceName.Find(filter) != -1) {
 				return true;
 			}

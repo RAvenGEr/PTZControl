@@ -221,7 +221,7 @@ BOOL AdjustVisibleWindowRect(LPRECT lpRect, HWND hWndParent=NULL)
 // CPTZControlDlg dialog
 
 CPTZControlDlg::CPTZControlDlg(CWnd* pParent /*=nullptr*/)
-	: CDialogEx(IDD_PTZCONTROL_DIALOG, pParent)
+	: CDialogEx(IDD_PTZCONTROL, pParent)
 	, m_hAccel(NULL)
 	, m_evTerminating(FALSE,TRUE)
 	, m_pGuardThread(nullptr)
@@ -353,7 +353,7 @@ void CPTZControlDlg::ResetAllColors()
 void CPTZControlDlg::FindCompatibleCams()
 {
 	std::vector<WebcamController> camsFound;
-	std::vector<CString> camDevNames;
+
 	//---------------------------------------------------------------------
 	// INIT AND FIND WEB CAMS
 	// 
@@ -363,34 +363,26 @@ void CPTZControlDlg::FindCompatibleCams()
 	std::vector<CString> deviceNameFilters;
 	for (const auto* p : g_aCameras)
 		deviceNameFilters.emplace_back(p);
-	CString strCameraNameToSearch = theApp.GetProfileString(REG_DEVICE, REG_DEVICENAME, _T(""));
-	if (!strCameraNameToSearch.IsEmpty())
-		deviceNameFilters.push_back(strCameraNameToSearch);
-	if (!theApp.m_strDevName.IsEmpty())
-		deviceNameFilters.push_back(theApp.m_strDevName);
+	
+	for (const auto& dev : theApp.conf().DeviceNames())
+		deviceNameFilters.emplace_back(dev.c_str());
 
 	auto aDevices{ WebcamController::CompatibleDevices(deviceNameFilters) };
 
-	auto OpenWebCam = [](WebcamController& webCam, CString strDevToken)->bool
+	auto OpenWebCam = [](WebcamController& webCam, const WebcamDevice& device)->bool
 	{
-		HRESULT hr = webCam.OpenDevice(strDevToken);
+		HRESULT hr = webCam.OpenDevice(device);
 		if (FAILED(hr))
 		{
 			AfxMessageBox(IDP_ERR_OPENFAILED);
 			return false;
 		}
-
-		//	Load the default setting
-		webCam.useLogitechMotionControl = theApp.GetProfileInt(REG_DEVICE, REG_USELOGOTECHMOTIONCONTROL, FALSE) != 0;
-		webCam.motorIntervalTime = theApp.GetProfileInt(REG_DEVICE, REG_MOTORINTERVALTIMER, WebcamController::DEFAULT_MOTOR_INTERVAL);
 		return true;
 	};
 
-	for (auto device : aDevices) {
+	for (const auto &device : aDevices) {
 		camsFound.emplace_back();
-		if (OpenWebCam(camsFound.back(), device.devicePath)) {
-			camDevNames.push_back(device.devicePath);
-		} else {
+		if (!OpenWebCam(camsFound.back(), device)) {
 			camsFound.pop_back();
 		}
 	}
@@ -400,12 +392,11 @@ void CPTZControlDlg::FindCompatibleCams()
 	{
 		// If we have no cam, show message
 		AfxMessageBox(IDP_ERR_NO_CAMERA, MB_ICONERROR);
+
+		// Add test camera
+		m_webCams.emplace_back();
 	}
-	m_webCams.insert(m_webCams.end(), std::make_move_iterator(camsFound.begin()), std::make_move_iterator(camsFound.end()));
-	m_camDevPaths.insert(m_camDevPaths.end(), std::make_move_iterator(camDevNames.begin()), std::make_move_iterator(camDevNames.end()));
-	if (m_webCams.size() != m_camDevPaths.size()) {
-		AfxMessageBox(L"Unexpected result of device scan");
-	}
+	std::move(std::make_move_iterator(camsFound.begin()), std::make_move_iterator(camsFound.end()), std::back_inserter(m_webCams));
 }
 
 void CPTZControlDlg::ResetMemButton()
@@ -414,11 +405,6 @@ void CPTZControlDlg::ResetMemButton()
 	KillTimer(TIMER_CLEAR_MEMORY);
 	m_btMemory.SetCheck(0);
 	m_btMemory.SetFaceColor(COLORREF(-1));
-}
-
-WebcamController& CPTZControlDlg::GetCurrentWebCam()
-{
-	return m_webCams[m_currentCam];
 }
 
 void CPTZControlDlg::SetActiveCam(size_t cam)
@@ -446,10 +432,13 @@ void CPTZControlDlg::SetActiveCam(size_t cam)
 
 		// Set the tooltips
 		for (int i=0; i<WebcamController::NUM_PRESETS; ++i)
-			m_btPreset[i].SetTooltip(m_strTooltips[cam][i]);
+			m_btPreset[i].SetTooltip(theApp.conf().TooltipForPreset(static_cast<LPCWSTR>(GetCurrentWebCam().Path()), i).c_str());
 
 		// Set the new webcam
 		m_currentCam = cam;
+		m_useLogitechControl = theApp.conf().UseLogitechControl(static_cast<LPCWSTR>(GetCurrentWebCam().Path()));
+		m_motorTime = theApp.conf().MotorTime(static_cast<LPCWSTR>(GetCurrentWebCam().Path()));
+
 		auto Enable = [&](CPTZButton &btn, bool bActive)
 		{
 			btn.SetCheck(bActive);
@@ -570,29 +559,18 @@ BOOL CPTZControlDlg::OnInitDialog()
 	GetWindowRect(rect);
 	CPoint pt = rect.TopLeft();
 	rect.OffsetRect(-pt);
-	pt.x = theApp.GetProfileInt(REG_WINDOW, REG_WINDOW_POSX, pt.x);
-	pt.y = theApp.GetProfileInt(REG_WINDOW, REG_WINDOW_POSY, pt.y);
+	pt.x = theApp.conf().WindowPosXOrDefault(pt.x);
+	pt.y = theApp.conf().WindowPosYOrDefault(pt.y);
 	rect.OffsetRect(pt);
 	AdjustVisibleWindowRect(rect);
 
 	// Move it
 	SetWindowPos(&CWnd::wndTopMost, rect.left, rect.top, rect.Width()+layout.cxDelta*sizeRaster.cx, rect.Height(), 0);
 
-	// Set the tooltips for all presets
-	for (int i = 0; i < WebcamController::NUM_PRESETS; ++i)
-	{
-		for (int j = 0; j < CPTZControlDlg::NUM_MAX_WEBCAMS; ++j)
-		{
-			CString str;
-			str.Format(REG_TOOLTIP, i + 1 + j*100);
-			m_strTooltips[j][i] = theApp.GetProfileString(REG_WINDOW, str);
-		}
-	}
-
 	EnableToolTips(TRUE);
 
 	// Start a guard thread that takes care about a blocking app.
-	if (!theApp.m_bNoGuard)
+	if (!theApp.conf().NoGuard())
 		m_pGuardThread = AfxBeginThread(&GuardThread,this);
 
 	// Set a time to move the focus to the parent window
@@ -600,7 +578,7 @@ BOOL CPTZControlDlg::OnInitDialog()
 	SetFocus();
 
 	// Move all cams to home position. And WebCam 0 will be the active one.
-	if (!theApp.m_bReset)
+	if (!theApp.conf().Reset())
 	{
 		// Activate camera 0.
 		if (!m_webCams.empty())
@@ -660,10 +638,13 @@ BOOL CPTZControlDlg::OnDeviceChange(UINT nEventType, DWORD_PTR dwData)
 			auto devint = reinterpret_cast<DEV_BROADCAST_DEVICEINTERFACE*>(dwData);
 			CString path{ devint->dbcc_name };
 			path.MakeLower();
-			auto res = std::find(m_camDevPaths.begin(), m_camDevPaths.end(), path);
-			if (res != m_camDevPaths.end()) {
-				size_t pos = res - m_camDevPaths.begin();
-				HRESULT hr = m_webCams[pos].OpenDevice(path);
+			auto path_matches = [&](const WebcamController& cam) {
+				return cam.Path() == path;
+			};
+			auto res = std::find_if(m_webCams.begin(), m_webCams.end(), path_matches);
+			if (res != m_webCams.end()) {
+				size_t pos = res - m_webCams.begin();
+				HRESULT hr = m_webCams[pos].ReOpenDevice();
 				if (SUCCEEDED(hr))
 					m_btWebCam[pos].EnableWindow(TRUE);
 			}
@@ -674,9 +655,12 @@ BOOL CPTZControlDlg::OnDeviceChange(UINT nEventType, DWORD_PTR dwData)
 			auto devint = reinterpret_cast<DEV_BROADCAST_DEVICEINTERFACE*>(dwData);
 			CString path{ devint->dbcc_name };
 			path.MakeLower();
-			auto res = std::find(m_camDevPaths.begin(), m_camDevPaths.end(), path);
-			if (res != m_camDevPaths.end()) {
-				size_t pos = res - m_camDevPaths.begin();
+			auto path_matches = [&](const WebcamController& cam) {
+				return cam.Path() == path;
+			};
+			auto res = std::find_if(m_webCams.begin(), m_webCams.end(), path_matches);
+			if (res != m_webCams.end()) {
+				size_t pos = res - m_webCams.begin();
 				if (m_webCams.size() > 1) {
 					if (m_currentCam == pos) {
 						SetActiveCam(pos == 0 ? 1 : 0);
@@ -711,8 +695,9 @@ void CPTZControlDlg::OnClose()
 {
 	CRect rect;
 	GetWindowRect(rect);
-	theApp.WriteProfileInt(REG_WINDOW,REG_WINDOW_POSX,rect.left);
-	theApp.WriteProfileInt(REG_WINDOW,REG_WINDOW_POSY,rect.top);
+	theApp.mut_conf().SetWindowPos(rect.left, rect.top);
+	
+	theApp.WriteConfigurationToFile();
 
 	UnregisterDeviceNotification(m_hDeviceNotify);
 
@@ -792,20 +777,17 @@ void CPTZControlDlg::OnBtHome()
 	m_btHome.SetFaceColor(COLOR_GREEN,TRUE);
 }
 
-
 void CPTZControlDlg::OnBtZoomIn()
 {
 	ResetAllColors();
 	GetCurrentWebCam().Zoom(ZoomDirection::In);
 }
 
-
 void CPTZControlDlg::OnBtZoomOut()
 {
 	ResetAllColors();
 	GetCurrentWebCam().Zoom(ZoomDirection::Out);
 }
-
 
 void CPTZControlDlg::OnBtDown()
 {
@@ -814,12 +796,12 @@ void CPTZControlDlg::OnBtDown()
 		GetCurrentWebCam().Tilt(TiltDirection::Down);
 		KillTimer(TIMER_TILT_STOP);
 	}
-	else if (GetCurrentWebCam().useLogitechMotionControl) {
+	else if (m_useLogitechControl) {
 		GetCurrentWebCam().LogiMotionTilt(TiltDirection::Down);
 	}
 	else {
 		GetCurrentWebCam().Tilt(TiltDirection::Down);
-		SetTimer(TIMER_TILT_STOP, GetCurrentWebCam().motorIntervalTime, NULL);
+		SetTimer(TIMER_TILT_STOP, m_motorTime, NULL);
 	}
 }
 
@@ -830,15 +812,14 @@ void CPTZControlDlg::OnBtUp()
 		GetCurrentWebCam().Tilt(TiltDirection::Up);
 		KillTimer(TIMER_TILT_STOP);
 	}
-	else if (GetCurrentWebCam().useLogitechMotionControl) {
+	else if (m_useLogitechControl) {
 		GetCurrentWebCam().LogiMotionTilt(TiltDirection::Up);
 	}
 	else {
 		GetCurrentWebCam().Tilt(TiltDirection::Up);
-		SetTimer(TIMER_TILT_STOP, GetCurrentWebCam().motorIntervalTime, NULL);
+		SetTimer(TIMER_TILT_STOP, m_motorTime, NULL);
 	}
 }
-
 
 void CPTZControlDlg::OnBtLeft()
 {
@@ -847,15 +828,14 @@ void CPTZControlDlg::OnBtLeft()
 		GetCurrentWebCam().Pan(PanDirection::Left);
 		KillTimer(TIMER_PAN_STOP);
 	}
-	else if (GetCurrentWebCam().useLogitechMotionControl) {
+	else if (m_useLogitechControl) {
 		GetCurrentWebCam().LogiMotionPan(PanDirection::Left);
 	}
 	else {
 		GetCurrentWebCam().Pan(PanDirection::Left);
-		SetTimer(TIMER_PAN_STOP, GetCurrentWebCam().motorIntervalTime, NULL);
+		SetTimer(TIMER_PAN_STOP, m_motorTime, NULL);
 	}
 }
-
 
 void CPTZControlDlg::OnBtRight()
 {
@@ -864,23 +844,20 @@ void CPTZControlDlg::OnBtRight()
 		GetCurrentWebCam().Pan(PanDirection::Right);
 		KillTimer(TIMER_PAN_STOP);
 	}
-	else if (GetCurrentWebCam().useLogitechMotionControl) {
+	else if (m_useLogitechControl) {
 		GetCurrentWebCam().LogiMotionPan(PanDirection::Right);
 	}
 	else {
 		GetCurrentWebCam().Pan(PanDirection::Right);
-		SetTimer(TIMER_PAN_STOP, GetCurrentWebCam().motorIntervalTime, NULL);	
+		SetTimer(TIMER_PAN_STOP, m_motorTime, NULL);
 	}
 }
-
 
 void CPTZControlDlg::OnSetFocus(CWnd* pOldWnd)
 {
 	// Do nothing. Never set the focus to a child.
 	UNUSED_ALWAYS(pOldWnd);
 }
-
-
 
 void CPTZControlDlg::OnTimer(UINT_PTR nIDEvent)
 {
@@ -915,41 +892,12 @@ void CPTZControlDlg::OnBtUnpushed()
 
 void CPTZControlDlg::OnBtSettings()
 {
-	CSettingsDlg dlg;
-	dlg.m_strCameraName = m_strCameraDeviceNames;
-	dlg.m_strCameraName.Replace(_T("\r\n"), _T(", "));
-	dlg.m_bLogitechCameraControl = GetCurrentWebCam().useLogitechMotionControl;
-	dlg.m_iMotorIntervalTimer = GetCurrentWebCam().motorIntervalTime;
-
-	// Get a copy of the tooltips
-	for (int i = 0; i < WebcamController::NUM_PRESETS; ++i)
-	{
-		for (int j = 0; j < CPTZControlDlg::NUM_MAX_WEBCAMS; ++j)
-		{
-			dlg.m_strTooltip[j][i] = m_strTooltips[j][i];
-		}
-	}
+	CSettingsDlg dlg(m_webCams);
 
 	if (dlg.DoModal()!=IDOK)
 		return;
-
-	// Copy back and save
-	for (int i = 0; i < WebcamController::NUM_PRESETS; ++i)
-	{
-		for (int j = 0; j < CPTZControlDlg::NUM_MAX_WEBCAMS; ++j)
-		{
-			m_strTooltips[j][i] = dlg.m_strTooltip[j][i];
-			CString str;
-			str.Format(REG_TOOLTIP, i + 1 + j*100);
-			theApp.WriteProfileString(REG_WINDOW, str, m_strTooltips[j][i]);
-		}
-	}
-
-	// Camera control
-	GetCurrentWebCam().useLogitechMotionControl = dlg.m_bLogitechCameraControl!=0;
-	theApp.WriteProfileInt(REG_DEVICE, REG_USELOGOTECHMOTIONCONTROL, dlg.m_bLogitechCameraControl);
-	GetCurrentWebCam().motorIntervalTime = dlg.m_iMotorIntervalTimer;
-	theApp.WriteProfileInt(REG_DEVICE, REG_USELOGOTECHMOTIONCONTROL, dlg.m_bLogitechCameraControl);
+	
+	theApp.WriteConfigurationToFile();
 
 	// Set tooltips again
 	SetActiveCam(m_currentCam);

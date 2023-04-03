@@ -12,18 +12,8 @@
 
 struct WebcamDevice
 {
-	const CString deviceName;
-	const CString devicePath;
-};
-
-struct UsbIdentifier
-{
-	DWORD vid;
-	DWORD pid;
-
-	bool operator==(const UsbIdentifier& rhs) const {
-		return vid == rhs.vid && pid == rhs.pid;
-	}
+	const CString name;
+	const CString path;
 };
 
 enum class PanDirection : long {
@@ -61,10 +51,15 @@ public:
 	/** Retrieve compatible devices, optionally filtering by name */
 	static std::vector<WebcamDevice> CompatibleDevices(std::vector<CString> deviceNameFilters = {});
 
-	WebcamController() {}
+	WebcamController() = default;
+	WebcamController(WebcamController&) = delete;
+	WebcamController(WebcamController&&) = default;
 
-	HRESULT OpenDevice(const CString& devicePath);
-	HRESULT OpenDevice(UsbIdentifier usbId);
+	WebcamController& operator=(WebcamController&) = delete;
+	WebcamController& operator=(WebcamController&&) = default;
+
+	HRESULT OpenDevice(const WebcamDevice& devicePath);
+	HRESULT ReOpenDevice();
 	void CloseDevice();
 	HRESULT IsPeripheralPropertySetSupported() const;
 
@@ -76,7 +71,7 @@ public:
 
 	/** Start pan in supplied direction or stop */
 	void Pan(PanDirection pan);
-	
+
 	/** Tilt camera step at a time using Logitech control */
 	void LogiMotionTilt(TiltDirection tilt);
 
@@ -93,8 +88,14 @@ public:
 	void SavePreset(int iNum);
 	void GotoPreset(int iNum);
 
-	int motorIntervalTime{ DEFAULT_MOTOR_INTERVAL };
-	bool useLogitechMotionControl{ false };
+	const CString& Path() const {
+		return m_device.path;
+	}
+
+	const CString& Name() const {
+		return m_device.name;
+	}
+
 	bool invertLogitech{ true };
 
 private:
@@ -108,6 +109,8 @@ private:
 
 	CComPtr<IKsControl> m_spKsControl{};
 	CComQIPtr<IAMCameraControl> m_spAMCameraControl{};
+
+	WebcamDevice m_device{};
 
 	DWORD m_dwXUDeviceInformationNodeId{ NONODE };
 	DWORD m_dwXUVideoPipeControlNodeId{ NONODE };

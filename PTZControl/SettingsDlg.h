@@ -9,16 +9,22 @@ class CSettingsDlg : public CDialogEx
 	DECLARE_DYNAMIC(CSettingsDlg)
 
 public:
-	CSettingsDlg(CWnd* pParent = nullptr);
+	CSettingsDlg(const std::vector<WebcamController>& cameras, CWnd* pParent = nullptr)
+		: CDialogEx(IDD_SETTINGS, pParent)
+		, m_cameras(cameras)
+	{
+	}
+
 	virtual ~CSettingsDlg() {}
 
 	afx_msg void OnChLogitechcontrol();
+	afx_msg void OnEdMotorInterval();
+	afx_msg void OnCamComboSel();
 	virtual BOOL OnInitDialog();
-
-	CString m_strCameraName;
-	CString m_strTooltip[CPTZControlDlg::NUM_MAX_WEBCAMS][WebcamController::NUM_PRESETS];
-	BOOL m_bLogitechCameraControl;
-	int m_iMotorIntervalTimer;
+	
+	std::map<std::wstring, std::vector<std::wstring>> m_tooltips;
+	std::map<std::wstring, bool> m_useLogitechControl;
+	std::map<std::wstring, int> m_motorTime;
 	CEdit m_edMotorInterval;
 	CButton m_chLogitechControl;
 
@@ -30,4 +36,10 @@ public:
 protected:
 	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
 	DECLARE_MESSAGE_MAP()
+private:
+	const std::vector<WebcamController>& m_cameras;
+	CComboBox m_camCombo;
+	CSpinButtonCtrl m_motorSpin;
+
+	CWnd* m_pTipEdit[WebcamController::NUM_PRESETS];
 };
