@@ -77,6 +77,68 @@ static HRESULT GetDeviceMoniker(const CString& deviceMatch, CComPtr<IMoniker>& p
 	return HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND);
 }
 
+std::vector<WebcamDevice> WebcamDevices(std::vector<CString> deviceNameFilters)
+{
+	std::vector<WebcamDevice> devices;
+	bool not_filtered = deviceNameFilters.empty();
+	if (!not_filtered) {
+		for (const auto& name : deviceNameFilters) {
+			if (name == _T("*")) {
+				not_filtered = true;
+			}
+		}
+	}
+
+	auto deviceNameMatch = [&](const CString& deviceName) {
+		for (const auto& filter : deviceNameFilters) {
+			if (deviceName.Find(filter) != -1) {
+				return true;
+			}
+		}
+		return false;
+	};
+
+	// Get a device list
+	CComPtr<ICreateDevEnum> pSysDevEnum;
+	HRESULT hr;
+	hr = CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC_SERVER, IID_ICreateDevEnum, (void**)&pSysDevEnum);
+	if (SUCCEEDED(hr))
+	{
+		//create a device class enumerator
+		CComPtr<IEnumMoniker> pIEnumMoniker;
+		hr = pSysDevEnum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, &pIEnumMoniker, 0);
+		if (SUCCEEDED(hr))
+		{
+			ULONG	pFetched = NULL;
+			CComPtr<IMoniker> pImoniker;
+			while (S_OK == pIEnumMoniker->Next(1, &pImoniker, &pFetched))
+			{
+				CComPtr<IPropertyBag> pPropBag;
+				hr = pImoniker->BindToStorage(0, 0, IID_PPV_ARGS(&pPropBag));
+				if (SUCCEEDED(hr) && pPropBag)
+				{
+					CComVariant varCameraName;
+					CComVariant varDevicePath;
+					pPropBag->Read(L"FriendlyName", &varCameraName, 0);
+					pPropBag->Read(L"DevicePath", &varDevicePath, 0);
+
+					if (SUCCEEDED(varCameraName.ChangeType(VT_BSTR)) &&
+						SUCCEEDED(varDevicePath.ChangeType(VT_BSTR)))
+					{
+						CString strCameraName(varCameraName.bstrVal);
+						CString strDevicePath(varDevicePath.bstrVal);
+						if (not_filtered || deviceNameMatch(strCameraName)) {
+							devices.emplace_back(WebcamDevice{ strCameraName, strDevicePath });
+						}
+					}
+				}
+				pImoniker.Release();
+			}
+		}
+	}
+	return devices;
+}
+
 HRESULT WebcamController::OpenDevice(const WebcamDevice& device)
 {
 	CComPtr<IMoniker> pMoniker;
@@ -471,67 +533,4 @@ void WebcamController::LogiMotionPan(const PanDirection pan)
 {
 	DWORD dwValue = MAKELONG(MAKEWORD(0, -to_underlying(pan)), MAKEWORD(0, 0));
 	SetProperty(XU_PERIPHERAL_CONTROL, XU_PERIPHERALCONTROL_PANTILT_RELATIVE_CONTROL, sizeof(DWORD), &dwValue);
-}
-
-
-std::vector<WebcamDevice> WebcamController::CompatibleDevices(std::vector<CString> deviceNameFilters)
-{
-	std::vector<WebcamDevice> devices;
-	bool not_filtered = deviceNameFilters.empty();
-	if (!not_filtered) {
-		for (const auto& name : deviceNameFilters) {
-			if (name == _T("*")) {
-				not_filtered = true;
-			}
-		}
-	}
-
-	auto deviceNameMatch = [&](const CString& deviceName) {
-		for (const auto& filter : deviceNameFilters) {
-			if (deviceName.Find(filter) != -1) {
-				return true;
-			}
-		}
-		return false;
-	};
-
-	// Get a device list
-	CComPtr<ICreateDevEnum> pSysDevEnum;
-	HRESULT hr;
-	hr = CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC_SERVER, IID_ICreateDevEnum, (void**)&pSysDevEnum);
-	if (SUCCEEDED(hr))
-	{
-		//create a device class enumerator
-		CComPtr<IEnumMoniker> pIEnumMoniker;
-		hr = pSysDevEnum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, &pIEnumMoniker, 0);
-		if (SUCCEEDED(hr))
-		{
-			ULONG	pFetched = NULL;
-			CComPtr<IMoniker> pImoniker;
-			while (S_OK == pIEnumMoniker->Next(1, &pImoniker, &pFetched))
-			{
-				CComPtr<IPropertyBag> pPropBag;
-				hr = pImoniker->BindToStorage(0, 0, IID_PPV_ARGS(&pPropBag));
-				if (SUCCEEDED(hr) && pPropBag)
-				{
-					CComVariant varCameraName;
-					CComVariant varDevicePath;
-					pPropBag->Read(L"FriendlyName", &varCameraName, 0);
-					pPropBag->Read(L"DevicePath", &varDevicePath, 0);
-
-					if (SUCCEEDED(varCameraName.ChangeType(VT_BSTR)) &&
-						SUCCEEDED(varDevicePath.ChangeType(VT_BSTR)))
-					{
-						CString strCameraName(varCameraName.bstrVal);
-						CString strDevicePath(varDevicePath.bstrVal);
-						if (not_filtered || deviceNameMatch(strCameraName)) {
-							devices.emplace_back(WebcamDevice{ strCameraName, strDevicePath });
-						}
-					}
-				}
-				pImoniker.Release();
-			}
-		}
-	}
-	return devices;
 }

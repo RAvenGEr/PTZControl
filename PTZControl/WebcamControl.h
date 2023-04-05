@@ -39,6 +39,9 @@ constexpr auto to_underlying(T e) {
 	return static_cast<std::underlying_type_t<T>>(e);
 }
 
+/** Retrieve webcam devices, optionally filtering by name */
+std::vector<WebcamDevice> WebcamDevices(std::vector<CString> deviceNameFilters = {});
+
 /**
 * (see https://msdn.microsoft.com/en-us/library/windows/hardware/ff568656(v=vs.85).aspx).
 */
@@ -46,10 +49,6 @@ class WebcamController
 {
 public:
 	static constexpr size_t NUM_PRESETS{ 8 };
-	static constexpr int DEFAULT_MOTOR_INTERVAL{ 70 };
-
-	/** Retrieve compatible devices, optionally filtering by name */
-	static std::vector<WebcamDevice> CompatibleDevices(std::vector<CString> deviceNameFilters = {});
 
 	WebcamController() = default;
 	WebcamController(WebcamController&) = delete;
@@ -57,6 +56,8 @@ public:
 
 	WebcamController& operator=(WebcamController&) = delete;
 	WebcamController& operator=(WebcamController&&) = default;
+
+	WebcamController(const CString& name) :m_device{ name, CString{ L"" } } {}
 
 	HRESULT OpenDevice(const WebcamDevice& devicePath);
 	HRESULT ReOpenDevice();

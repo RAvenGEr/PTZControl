@@ -367,7 +367,7 @@ void CPTZControlDlg::FindCompatibleCams()
 	for (const auto& dev : theApp.conf().DeviceNames())
 		deviceNameFilters.emplace_back(dev.c_str());
 
-	auto aDevices{ WebcamController::CompatibleDevices(deviceNameFilters) };
+	auto aDevices = WebcamDevices(deviceNameFilters);
 
 	auto OpenWebCam = [](WebcamController& webCam, const WebcamDevice& device)->bool
 	{
@@ -394,7 +394,7 @@ void CPTZControlDlg::FindCompatibleCams()
 		AfxMessageBox(IDP_ERR_NO_CAMERA, MB_ICONERROR);
 
 		// Add test camera
-		m_webCams.emplace_back();
+		m_webCams.emplace_back(L"Demo");
 	}
 	std::move(std::make_move_iterator(camsFound.begin()), std::make_move_iterator(camsFound.end()), std::back_inserter(m_webCams));
 }

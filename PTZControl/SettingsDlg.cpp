@@ -26,6 +26,34 @@ void CSettingsDlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_CH_LOGITECHCONTROL, m_chLogitechControl);
 	DDX_Control(pDX, IDC_COMBOCAMERA, m_camCombo);
 	DDX_Control(pDX, IDC_SPIN1, m_motorSpin);
+	DDX_Control(pDX, IDC_EDIT_DISPLAY, m_edDisplayName);
+	DDX_Control(pDX, IDC_ED_TOOLTIP_1_1, m_tipEdit[0]);
+	DDX_Control(pDX, IDC_ED_TOOLTIP_1_2, m_tipEdit[1]);
+	DDX_Control(pDX, IDC_ED_TOOLTIP_1_3, m_tipEdit[2]);
+	DDX_Control(pDX, IDC_ED_TOOLTIP_1_4, m_tipEdit[3]);
+	DDX_Control(pDX, IDC_ED_TOOLTIP_1_5, m_tipEdit[4]);
+	DDX_Control(pDX, IDC_ED_TOOLTIP_1_6, m_tipEdit[5]);
+	DDX_Control(pDX, IDC_ED_TOOLTIP_1_7, m_tipEdit[6]);
+	DDX_Control(pDX, IDC_ED_TOOLTIP_1_8, m_tipEdit[7]);
+
+	if (pDX->m_bSaveAndValidate) {
+		StoreCameraData();
+	}
+}
+
+void CSettingsDlg::StoreCameraData()
+{
+	CString temp;
+	m_edDisplayName.GetWindowTextW(temp);
+	m_displayName[m_currentCamPath] = temp;
+	m_useLogitechControl[m_currentCamPath] = m_chLogitechControl.GetCheck();
+	m_edMotorInterval.GetWindowTextW(temp);
+	const auto val = _wtoi(temp);
+	m_motorTime[m_currentCamPath] = val;
+	for (size_t i = 0; i < WebcamController::NUM_PRESETS; ++i) {
+		m_tipEdit[i].GetWindowTextW(temp);
+		m_tooltips[m_currentCamPath][i] = temp;
+	}
 }
 
 BEGIN_MESSAGE_MAP(CSettingsDlg, CDialogEx)
@@ -66,7 +94,17 @@ void CSettingsDlg::OnEdMotorInterval()
 
 void CSettingsDlg::OnCamComboSel()
 {
+	if (!m_currentCamPath.empty()) {
+		StoreCameraData();
+	}
 	const WebcamController* cam = reinterpret_cast<WebcamController*>(m_camCombo.GetItemDataPtr(m_camCombo.GetCurSel()));
+	const auto &name = theApp.conf().DisplayName(static_cast<LPCWSTR>(cam->Name()));
+	m_edDisplayName.SetWindowTextW(name.c_str());
+	for (size_t i = 0; i < WebcamController::NUM_PRESETS; ++i) {
+		const auto& tip = theApp.conf().TooltipForPreset(static_cast<LPCWSTR>(cam->Name()), i);
+		m_tipEdit[i].SetWindowTextW(tip.c_str());
+	}
+	m_currentCamPath = cam->Path();
 }
 
 BOOL CSettingsDlg::OnInitDialog()
@@ -75,18 +113,21 @@ BOOL CSettingsDlg::OnInitDialog()
 	m_motorSpin.SetRange(10, 1000);
 	m_motorSpin.SetPos(70);
 
-	for (int i = 0; i < WebcamController::NUM_PRESETS; ++i) {
-		m_pTipEdit[i] = GetDlgItem(IDC_ED_TOOLTIP_1_1 + i);
-	}
-
 	for (const auto& cam : m_cameras) {
-		const CString name = cam.Name().IsEmpty() ?L"Demo":cam.Name();
+		CString name = cam.Name();
+		try {
+			const auto& display = theApp.conf().DisplayName(static_cast<LPCWSTR>(name));
+			name = L" (" + name + L")";
+			name = display.c_str() + name;
+		}
+		catch (std::out_of_range) {
+		}
 		int pos = m_camCombo.AddString(name);
 		m_camCombo.SetItemDataPtr(pos, reinterpret_cast<void*>(const_cast<WebcamController*>(&cam)));
 	}
 
 	m_camCombo.SetCurSel(0);
-
+	OnCamComboSel();
 	OnChLogitechcontrol();
 
 	CenterWindow();

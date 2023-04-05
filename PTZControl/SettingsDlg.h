@@ -21,12 +21,6 @@ public:
 	afx_msg void OnEdMotorInterval();
 	afx_msg void OnCamComboSel();
 	virtual BOOL OnInitDialog();
-	
-	std::map<std::wstring, std::vector<std::wstring>> m_tooltips;
-	std::map<std::wstring, bool> m_useLogitechControl;
-	std::map<std::wstring, int> m_motorTime;
-	CEdit m_edMotorInterval;
-	CButton m_chLogitechControl;
 
 	// Dialog Data
 #ifdef AFX_DESIGN_TIME
@@ -37,9 +31,20 @@ protected:
 	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
 	DECLARE_MESSAGE_MAP()
 private:
+	void StoreCameraData();
 	const std::vector<WebcamController>& m_cameras;
+
+	std::map<std::wstring, std::wstring[WebcamController::NUM_PRESETS]> m_tooltips{};
+	std::map<std::wstring, std::wstring> m_displayName{};
+	std::map<std::wstring, bool> m_useLogitechControl{};
+	std::map<std::wstring, int> m_motorTime{};
+
+	std::wstring m_currentCamPath;
+
+	CEdit m_edMotorInterval;
+	CButton m_chLogitechControl;
 	CComboBox m_camCombo;
 	CSpinButtonCtrl m_motorSpin;
-
-	CWnd* m_pTipEdit[WebcamController::NUM_PRESETS];
+	CEdit m_edDisplayName;
+	CEdit m_tipEdit[WebcamController::NUM_PRESETS];
 };
