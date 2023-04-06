@@ -57,7 +57,7 @@ public:
 	WebcamController& operator=(WebcamController&) = delete;
 	WebcamController& operator=(WebcamController&&) = default;
 
-	WebcamController(const CString& name) :m_device{ name, CString{ L"" } } {}
+	WebcamController(const CString& name, const CString& path) :m_device{ name, path } {}
 
 	HRESULT OpenDevice(const WebcamDevice& devicePath);
 	HRESULT ReOpenDevice();

@@ -22,6 +22,31 @@ public:
 	afx_msg void OnCamComboSel();
 	virtual BOOL OnInitDialog();
 
+	const std::vector<std::wstring> ModifiedCameras() const 
+	{
+		return m_modifiedCams;
+	}
+
+	const std::array<std::wstring, WebcamController::NUM_PRESETS>& Tooltips(const std::wstring& camPath) const
+	{
+		return m_tooltips.at(camPath);
+	}
+
+	const std::wstring& DisplayName(const std::wstring& camPath) const
+	{
+		return m_displayName.at(camPath);
+	}
+
+	bool UseLogitechControl(const std::wstring& camPath) const
+	{
+		return m_useLogitechControl.at(camPath);
+	}
+
+	int MotorTime(const std::wstring& camPath) const
+	{
+		return m_motorTime.at(camPath);
+	}
+
 	// Dialog Data
 #ifdef AFX_DESIGN_TIME
 	enum { IDD = IDD_SETTINGS };
@@ -34,10 +59,12 @@ private:
 	void StoreCameraData();
 	const std::vector<WebcamController>& m_cameras;
 
-	std::map<std::wstring, std::wstring[WebcamController::NUM_PRESETS]> m_tooltips{};
+	std::map<std::wstring, std::array<std::wstring, WebcamController::NUM_PRESETS>> m_tooltips{};
 	std::map<std::wstring, std::wstring> m_displayName{};
 	std::map<std::wstring, bool> m_useLogitechControl{};
 	std::map<std::wstring, int> m_motorTime{};
+
+	std::vector<std::wstring> m_modifiedCams{};
 
 	std::wstring m_currentCamPath;
 

@@ -6,6 +6,10 @@
 #include <fstream>
 #include <toml.hpp>
 
+#ifdef min
+#undef min
+#endif
+
 class Configuration
 {
 public:
@@ -28,29 +32,33 @@ public:
 				const auto& cameras = toml::find<toml::table>(data, CAMERAS);
 				for (const auto& cam : cameras) {
 					try {
-						const auto& tooltips = toml::find<std::vector<std::string>>(cam.second, TOOLTIPS);
-						InsertTooltipsFromUtf8(cam.first, tooltips);
-					}
-					catch (std::out_of_range) {
-					}
-					try {
-						const auto& name = toml::find<std::string>(cam.second, DISPLAY_NAME);
+						const auto& camPathUtf8 = toml::find<std::string>(cam.second, PATH);
 						std::wstring_convert<std::codecvt_utf8<wchar_t>> wconv;
-						m_displayName[wconv.from_bytes(cam.first)] = wconv.from_bytes(name);
-					}
-					catch (std::out_of_range) {
-					}
-					try {
-						const auto& time = toml::find<int>(cam.second, MOTOR_TIME);
-						std::wstring_convert<std::codecvt_utf8<wchar_t>> wconv;
-						m_motorTime[wconv.from_bytes(cam.first)] = time;
-					}
-					catch (std::out_of_range) {
-					}
-					try {
-						const auto& control = toml::find<bool>(cam.second, LOGITECH_CONTROL);
-						std::wstring_convert<std::codecvt_utf8<wchar_t>> wconv;
-						m_useLogitechControl[wconv.from_bytes(cam.first)] = control;
+						const auto& camPath = wconv.from_bytes(camPathUtf8);
+						try {
+							const auto& tooltips = toml::find<std::vector<std::string>>(cam.second, TOOLTIPS);
+							InsertTooltipsFromUtf8(camPath, tooltips);
+						}
+						catch (std::out_of_range) {
+						}
+						try {
+							const auto& name = toml::find<std::string>(cam.second, DISPLAY_NAME);
+							m_displayName[camPath] = wconv.from_bytes(name);
+						}
+						catch (std::out_of_range) {
+						}
+						try {
+							const auto& time = toml::find<int>(cam.second, MOTOR_TIME);
+							m_motorTime[camPath] = time;
+						}
+						catch (std::out_of_range) {
+						}
+						try {
+							const auto& control = toml::find<bool>(cam.second, LOGITECH_CONTROL);
+							m_useLogitechControl[camPath] = control;
+						}
+						catch (std::out_of_range) {
+						}
 					}
 					catch (std::out_of_range) {
 					}
@@ -71,7 +79,7 @@ public:
 			return true;
 		}
 		const toml::value data{ {RESET, m_reset}, {NO_GUARD, m_noGuard} };
-		std::ofstream file{ filename, std::ios::out | std::ios::trunc || std::ios::binary };
+		std::ofstream file{ filename, std::ios::out | std::ios::trunc | std::ios::binary };
 		if (!file.good()) {
 			return false;
 		}
@@ -84,8 +92,11 @@ public:
 			// Manually serialize the per camera settings, converting to UTF8
 			std::wstring_convert<std::codecvt_utf8<wchar_t>> wconv;
 			const auto camPaths = UniqueCameraPaths();
+			size_t camNumber = 0;
 			for (const auto& cam : camPaths) {
-				file << "[" << CAMERAS << "." << wconv.to_bytes(cam) << "]" << std::endl;
+				file << "[" << CAMERAS << "." << ++camNumber << "]" << std::endl;
+				toml::value path{ {PATH, wconv.to_bytes(cam)} };
+				file << toml::format(path);
 				if (m_tooltips.count(cam)) {
 					file << TOOLTIPS << " = [" << std::endl;
 					bool first = true;
@@ -96,7 +107,8 @@ public:
 					file << "]" << std::endl;
 				}
 				if (m_displayName.count(cam)) {
-					file << DISPLAY_NAME << " = \"" << wconv.to_bytes(m_displayName[cam]) << "\"" << std::endl;
+					toml::value name{ {DISPLAY_NAME, wconv.to_bytes(m_displayName[cam])} };
+					file << toml::format(name);
 				}
 				if (m_useLogitechControl.count(cam) && m_useLogitechControl[cam]) {
 					file << LOGITECH_CONTROL << " = true" << std::endl;
@@ -191,6 +203,10 @@ public:
 		}
 	}
 
+	void SetDisplayName(const std::wstring& camPath, const std::wstring& displayName) {
+		m_displayName[camPath] = displayName;
+	}
+
 	void SetUseLogitechControl(const std::wstring& camPath, bool useLogitech) {
 		if (UseLogitechControl(camPath) == useLogitech) {
 			return;
@@ -235,9 +251,6 @@ public:
 		static const std::wstring EMPTY_TIP{};
 		m_dirty = true;
 		auto& camTips = m_tooltips[camPath];
-		while (camTips.size() < position) {
-			camTips.push_back(EMPTY_TIP);
-		}
 		camTips[position] = tip;
 	}
 
@@ -260,6 +273,7 @@ private:
 	static constexpr auto MOTOR_TIME{ "motor_time" };
 	static constexpr auto TOOLTIPS{ "tooltips" };
 	static constexpr auto CAMERAS{ "cameras" };
+	static constexpr auto PATH{ "path" };
 	static constexpr auto DISPLAY_NAME{ "display_name" };
 	static constexpr auto DEVICE_NAMES{ "device_names" };
 	static constexpr auto WINDOW_X{ "window_x" };
@@ -269,7 +283,7 @@ private:
 	static constexpr bool USE_LOGITECH_CONTROL_DEFAULT{ false };
 
 	// Per camera configuration - mapped to device path
-	std::map<std::wstring, std::vector<std::wstring>> m_tooltips{};
+	std::map<std::wstring, std::array<std::wstring, WebcamController::NUM_PRESETS>> m_tooltips{};
 	std::map<std::wstring, bool> m_useLogitechControl{};
 	std::map<std::wstring, int> m_motorTime{};
 	std::map<std::wstring, std::wstring> m_displayName{};
@@ -291,14 +305,13 @@ private:
 
 	bool m_dirty{ false };
 
-	void InsertTooltipsFromUtf8(const std::string& utf8CamPath, const std::vector<std::string>& utf8Tips) {
+	void InsertTooltipsFromUtf8(const std::wstring& camPath, const std::vector<std::string>& utf8Tips) {
 		std::wstring_convert<std::codecvt_utf8<wchar_t>> wconv;
-		const auto camName = std::wstring{ wconv.from_bytes(utf8CamPath) };
-		std::vector<std::wstring> tips;
-		for (const auto& tip : utf8Tips) {
-			tips.emplace_back(wconv.from_bytes(tip));
+		std::array<std::wstring, WebcamController::NUM_PRESETS> tips;
+		for (size_t i = 0; i < std::min(WebcamController::NUM_PRESETS, utf8Tips.size()); ++i) {
+			tips[i] = wconv.from_bytes(utf8Tips[i]);
 		}
-		m_tooltips.emplace(camName, std::move(tips));
+		m_tooltips.emplace(camPath, std::move(tips));
 	}
 
 	std::vector<std::wstring> UniqueCameraPaths() const {

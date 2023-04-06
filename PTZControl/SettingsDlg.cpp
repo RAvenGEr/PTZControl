@@ -43,6 +43,9 @@ void CSettingsDlg::DoDataExchange(CDataExchange* pDX)
 
 void CSettingsDlg::StoreCameraData()
 {
+	if (std::find(begin(m_modifiedCams), end(m_modifiedCams), m_currentCamPath) == end(m_modifiedCams)) {
+		m_modifiedCams.push_back(m_currentCamPath);
+	}
 	CString temp;
 	m_edDisplayName.GetWindowTextW(temp);
 	m_displayName[m_currentCamPath] = temp;
@@ -74,7 +77,7 @@ void CSettingsDlg::OnEdMotorInterval()
 	if (!m_edMotorInterval) {
 		return;
 	}
-	CString str = _T("");
+	CString str;
 	m_edMotorInterval.GetWindowTextW(str);
 	const auto val = _wtoi(str);
 	int lower;
@@ -98,13 +101,16 @@ void CSettingsDlg::OnCamComboSel()
 		StoreCameraData();
 	}
 	const WebcamController* cam = reinterpret_cast<WebcamController*>(m_camCombo.GetItemDataPtr(m_camCombo.GetCurSel()));
-	const auto &name = theApp.conf().DisplayName(static_cast<LPCWSTR>(cam->Name()));
+	m_currentCamPath = cam->Path();
+	const auto &name = theApp.conf().DisplayName(m_currentCamPath);
 	m_edDisplayName.SetWindowTextW(name.c_str());
 	for (size_t i = 0; i < WebcamController::NUM_PRESETS; ++i) {
-		const auto& tip = theApp.conf().TooltipForPreset(static_cast<LPCWSTR>(cam->Name()), i);
+		const auto& tip = theApp.conf().TooltipForPreset(m_currentCamPath, i);
 		m_tipEdit[i].SetWindowTextW(tip.c_str());
 	}
-	m_currentCamPath = cam->Path();
+	m_motorSpin.SetPos(theApp.conf().MotorTime(m_currentCamPath));
+	m_chLogitechControl.SetCheck(theApp.conf().UseLogitechControl(m_currentCamPath));
+	
 }
 
 BOOL CSettingsDlg::OnInitDialog()

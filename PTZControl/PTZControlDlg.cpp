@@ -394,7 +394,7 @@ void CPTZControlDlg::FindCompatibleCams()
 		AfxMessageBox(IDP_ERR_NO_CAMERA, MB_ICONERROR);
 
 		// Add test camera
-		m_webCams.emplace_back(L"Demo");
+		m_webCams.emplace_back(L"Demo", L"\\path");
 	}
 	std::move(std::make_move_iterator(camsFound.begin()), std::make_move_iterator(camsFound.end()), std::back_inserter(m_webCams));
 }
@@ -429,15 +429,15 @@ void CPTZControlDlg::SetActiveCam(size_t cam)
 					pButton->SetFaceColor(it->second);
 			}
 		}
-
-		// Set the tooltips
-		for (int i=0; i<WebcamController::NUM_PRESETS; ++i)
-			m_btPreset[i].SetTooltip(theApp.conf().TooltipForPreset(static_cast<LPCWSTR>(GetCurrentWebCam().Path()), i).c_str());
-
 		// Set the new webcam
 		m_currentCam = cam;
-		m_useLogitechControl = theApp.conf().UseLogitechControl(static_cast<LPCWSTR>(GetCurrentWebCam().Path()));
-		m_motorTime = theApp.conf().MotorTime(static_cast<LPCWSTR>(GetCurrentWebCam().Path()));
+		std::wstring currentPath = static_cast<LPCWSTR>(GetCurrentWebCam().Path());
+		// Set the tooltips
+		for (int i=0; i<WebcamController::NUM_PRESETS; ++i)
+			m_btPreset[i].SetTooltip(theApp.conf().TooltipForPreset(currentPath, i).c_str());
+
+		m_useLogitechControl = theApp.conf().UseLogitechControl(currentPath);
+		m_motorTime = theApp.conf().MotorTime(currentPath);
 
 		auto Enable = [&](CPTZButton &btn, bool bActive)
 		{
@@ -896,6 +896,32 @@ void CPTZControlDlg::OnBtSettings()
 
 	if (dlg.DoModal()!=IDOK)
 		return;
+
+	for (const auto& cam : dlg.ModifiedCameras()) {
+		try {
+			theApp.mut_conf().SetDisplayName(cam, dlg.DisplayName(cam));
+		}
+		catch (std::out_of_range) {
+		}
+		try {
+			theApp.mut_conf().SetUseLogitechControl(cam, dlg.UseLogitechControl(cam));
+		}
+		catch (std::out_of_range) {
+		}
+		try {
+			theApp.mut_conf().SetMotorTime(cam, dlg.MotorTime(cam));
+		}
+		catch (std::out_of_range) {
+		}
+		try {
+			const auto& tooltips = dlg.Tooltips(cam);
+			for (size_t i = 0; i < tooltips.size(); ++i) {
+				theApp.mut_conf().SetTooltipForCamera(cam, i, tooltips[i]);
+			}
+		}
+		catch (std::out_of_range) {
+		}
+	}
 	
 	theApp.WriteConfigurationToFile();
 
